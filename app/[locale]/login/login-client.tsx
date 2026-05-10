@@ -68,13 +68,44 @@ export function LoginClient() {
 
     setPending(true);
     try {
-      const { error: anonError } = await createClient().auth.signInAnonymously({
-        options: {
-          data: { full_name: "Guest visitor", locale: "he" },
-        },
+      const supabase = createClient();
+
+      // Mint a one-shot guest user via the create-guest-session edge function.
+      // This sidesteps the project-level Anonymous Sign-ins toggle: the
+      // function uses the service role to create a confirmed email/password
+      // user, returns ephemeral credentials, and we sign in with them.
+      const { data, error: invokeError } = await supabase.functions.invoke<{
+        ok?: boolean;
+        email?: string;
+        password?: string;
+        error?: string;
+      }>("create-guest-session", {
+        body: { locale: "he" },
       });
-      if (anonError) {
-        setError(t("auth.errorAnonymousDisabled"));
+
+      if (invokeError || !data?.ok || !data.email || !data.password) {
+        // Fall back to native anonymous sign-in if the function path failed
+        // (e.g. function not deployed yet on a fresh environment). If both
+        // routes are unavailable the user sees the disabled-anonymous hint.
+        const { error: anonError } = await supabase.auth.signInAnonymously({
+          options: {
+            data: { full_name: "Guest visitor", locale: "he" },
+          },
+        });
+        if (anonError) {
+          setError(t("auth.errorAnonymousDisabled"));
+          return;
+        }
+        router.push("/student");
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
+      if (signInError) {
+        setError(t("auth.errorGeneric"));
         return;
       }
       router.push("/student");
