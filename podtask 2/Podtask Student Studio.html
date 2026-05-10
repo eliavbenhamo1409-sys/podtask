@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Podtask — סטודיו סטודנט</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css"/>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components/atoms.jsx"></script>
+  <script type="text/babel" src="components/screens-1-2.jsx"></script>
+  <script type="text/babel" src="components/screens-3-4.jsx"></script>
+  <script type="text/babel" src="components/screens-5-6.jsx"></script>
+  <script type="text/babel" src="components/screens-7-8.jsx"></script>
+
+  <script type="text/babel">
+    const SCREENS = {
+      dashboard: 'לוח בקרה',
+      details: 'פרטי המטלה',
+      upload: 'העלאת קובץ',
+      processing: 'הכנה',
+      lobby: 'חדר המתנה',
+      mic: 'בדיקת מיקרופון',
+      interview: 'ראיון חי',
+      complete: 'סיום',
+    };
+
+    function App() {
+      const [screen, setScreen] = React.useState('dashboard');
+      const [ctx, setCtx] = React.useState(null);
+      const [showJump, setShowJump] = React.useState(false);
+
+      const go = (s, c) => { if (c) setCtx(c); setScreen(s); window.scrollTo({top:0, behavior:'instant'}); };
+
+      let view;
+      switch (screen) {
+        case 'dashboard': view = <Dashboard go={go}/>; break;
+        case 'details': view = <AssignmentDetails go={go} ctx={ctx}/>; break;
+        case 'upload': view = <UploadAssignment go={go} ctx={ctx}/>; break;
+        case 'processing': view = <Processing go={go} ctx={ctx}/>; break;
+        case 'lobby': view = <InterviewLobby go={go} ctx={ctx}/>; break;
+        case 'mic': view = <MicTest go={go} ctx={ctx}/>; break;
+        case 'interview': view = <InterviewRoom go={go} ctx={ctx}/>; break;
+        case 'complete': view = <InterviewComplete go={go} ctx={ctx}/>; break;
+        default: view = <Dashboard go={go}/>;
+      }
+
+      return (
+        <div data-screen-label={`0${Object.keys(SCREENS).indexOf(screen)+1} ${SCREENS[screen]}`}>
+          {view}
+
+          {/* Floating screen jumper */}
+          <div style={{position:'fixed', bottom:24, left:24, zIndex:100}}>
+            {showJump ? (
+              <div className="card" style={{padding:14, borderRadius:20, minWidth:240, boxShadow:'0 24px 70px rgba(15,23,42,0.12), inset 0 1px 0 rgba(255,255,255,0.9)'}}>
+                <div className="row between" style={{padding:'2px 6px 10px'}}>
+                  <div style={{fontSize:11, fontWeight:800, letterSpacing:'0.16em', color:'var(--muted)'}}>מעבר למסך</div>
+                  <button className="btn btn-ghost" style={{padding:4}} onClick={() => setShowJump(false)}><Icon.x size={14}/></button>
+                </div>
+                <div className="flex-col gap-2">
+                  {Object.entries(SCREENS).map(([key, label], i) => (
+                    <button key={key}
+                      onClick={() => { setScreen(key); setShowJump(false); window.scrollTo({top:0}); }}
+                      style={{textAlign:'left', padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
+                        background: screen === key ? 'rgba(125,211,252,0.18)' : 'transparent',
+                        color: screen === key ? 'var(--cyan)' : 'var(--ink-2)',
+                        cursor:'pointer'}}>
+                      <span style={{display:'inline-block', width:22, color:'var(--muted)', fontSize:11, fontWeight:700}}>0{i+1}</span> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowJump(true)}
+                className="row gap-2"
+                style={{padding:'10px 16px', borderRadius:999, background:'rgba(255,255,255,0.92)', border:'1px solid var(--line)',
+                  boxShadow:'0 12px 30px rgba(15,23,42,0.08)', fontSize:12, fontWeight:700, color:'var(--ink-2)', cursor:'pointer'}}>
+                <span style={{width:6, height:6, borderRadius:'50%', background:'var(--cyan)', boxShadow:'0 0 8px var(--cyan)'}}/>
+                מסך {Object.keys(SCREENS).indexOf(screen)+1} מתוך 8 · {SCREENS[screen]}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
