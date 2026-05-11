@@ -126,6 +126,11 @@ export function InterviewRoomClient({
   const pendingCloseRef = useRef(false);
   const closingTimerRef = useRef<number | null>(null);
   const elapsedRef = useRef(0);
+  // Tracks whether the host audio stream is currently playing. We need
+  // this so that `finish_interview` can wait for the farewell sentence to
+  // finish instead of cutting it off mid-word when the model calls the
+  // tool while it's still speaking.
+  const hostSpeakingRef = useRef(false);
 
   useEffect(() => {
     askedQuestionIndexesRef.current = new Set();
@@ -298,9 +303,11 @@ export function InterviewRoomClient({
             sessionRef.current.fail(err.message);
           },
           onAssistantAudioStart: () => {
+            hostSpeakingRef.current = true;
             sessionRef.current.aiStartedSpeaking();
           },
           onAssistantAudioEnd: () => {
+            hostSpeakingRef.current = false;
             sessionRef.current.aiFinishedSpeaking();
             // If a closing line was detected during this turn, close as
             // soon as the host actually falls silent rather than waiting
@@ -455,7 +462,44 @@ export function InterviewRoomClient({
               } catch {
                 /* noop */
               }
-              sessionRef.current.close();
+              // Wait for the farewell audio to finish before closing.
+              // The model may call `finish_interview` while it is still
+              // mid-sentence on the goodbye line — closing the session
+              // immediately would cut the audio off mid-word and the
+              // student would never hear the farewell.
+              //
+              // Strategy:
+              //   - If the host is still speaking, mark the close as
+              //     pending. `onAssistantAudioEnd` will then trigger the
+              //     real close as soon as the host falls silent.
+              //   - If the host is already silent (i.e. it finished the
+              //     farewell before emitting the tool call), close after
+              //     a short grace so the audio element flushes any
+              //     buffered samples.
+              //   - In either case, arm a safety timer (10 s) so a
+              //     dropped `audio_end` event never strands the user on
+              //     the live screen.
+              if (finalAnswerHandledRef.current) return;
+              if (closingTimerRef.current !== null) {
+                window.clearTimeout(closingTimerRef.current);
+                closingTimerRef.current = null;
+              }
+              pendingCloseRef.current = true;
+              if (hostSpeakingRef.current) {
+                closingTimerRef.current = window.setTimeout(() => {
+                  closingTimerRef.current = null;
+                  if (finalAnswerHandledRef.current) return;
+                  finalAnswerHandledRef.current = true;
+                  sessionRef.current.close();
+                }, 10_000);
+              } else {
+                closingTimerRef.current = window.setTimeout(() => {
+                  closingTimerRef.current = null;
+                  if (finalAnswerHandledRef.current) return;
+                  finalAnswerHandledRef.current = true;
+                  sessionRef.current.close();
+                }, 600);
+              }
             } else if (call.name === "ask_question_at_index") {
               try {
                 // Legacy compatibility no-op. We do NOT drive question
