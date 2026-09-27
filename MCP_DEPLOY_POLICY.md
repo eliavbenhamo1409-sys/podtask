@@ -21,6 +21,13 @@ This repository uses MCP as the default deployment path.
 - Default path: Supabase MCP tools.
 - Typical target in this repo: `create-realtime-session` Edge Function.
 
+## Vercel (Web App)
+
+- Vercel is connected to the GitHub repo; pushing to `main` deploys production.
+- Use `scripts/deploy.sh "<message>"` (typecheck → commit → push → wait for the
+  Vercel status on GitHub → print https://podtask.vercel.app).
+- The local Vercel CLI token is expired; the git push path needs no Vercel auth.
+
 ## Notes
 
 - This file is the canonical deploy preference reference.
