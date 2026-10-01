@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/lib/i18n/navigation";
 import { Badge } from "@/components/podtask/chip";
 import {
@@ -18,11 +18,23 @@ interface AssignmentCardProps {
   index?: number;
 }
 
+function formatDue(iso: string, locale: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  // UTC keeps server and client output identical (no hydration mismatch).
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(d);
+}
+
 export function AssignmentCard({ assignment, href, index = 0 }: AssignmentCardProps) {
   const t = useTranslations();
+  const locale = useLocale();
+  // Demo rows carry a translated relative label; real rows carry an ISO date.
   const dueLabel = assignment.dueLabelKey
     ? t(`due.${assignment.dueLabelKey}`)
-    : assignment.dueAt;
+    : formatDue(assignment.dueAt, locale);
   const estTime = `${assignment.estimatedInterviewMinutes} ${t("common.minutes")}`;
 
   let badge;
@@ -95,15 +107,17 @@ export function AssignmentCard({ assignment, href, index = 0 }: AssignmentCardPr
             className="row"
             style={{
               gap: 16,
+              rowGap: 6,
               marginTop: 24,
               fontSize: 13,
               color: "rgb(var(--ink-2))",
               fontWeight: 600,
+              flexWrap: "wrap",
             }}
           >
             <span className="row" style={{ gap: 8 }}>
               <CalendarIcon />
-              {dueLabel}
+              <bdi>{dueLabel}</bdi>
             </span>
             <span style={{ color: "rgb(var(--line))" }}>·</span>
             <span className="row" style={{ gap: 8 }}>

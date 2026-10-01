@@ -23,3 +23,6 @@ tsconfig.tsbuildinfo
 supabase/.temp/
 .vercel/
 .claude/settings.local.json
+
+# local dev-server launch config for the Claude desktop app
+.claude/launch.json

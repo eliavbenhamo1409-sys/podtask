@@ -120,6 +120,7 @@ export const MOCK_INTERVIEWS: StudentInterview[] = [
 export const MOCK_HISTORY: StudentHistoryEntry[] = [
   {
     assignmentId: "a4",
+    interviewId: "int-a4",
     title: "אסטרטגיית שיווק — חקר מקרה",
     courseName: "מנהל עסקים 180",
     uploadedAt: "2026-04-28T18:32:00.000Z",

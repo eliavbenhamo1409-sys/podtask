@@ -67,21 +67,12 @@ export function UploadAssignmentClient({ assignment }: UploadAssignmentClientPro
   return (
     <StudentAppShell>
       <div className="page-narrow">
-        <Link
-          href={`/student/assignments/${assignment.id}`}
-          style={{ textDecoration: "none" }}
-        >
-          <button
-            type="button"
-            className="btn btn-ghost row"
-            style={{ padding: "8px 0", gap: 8 }}
-          >
+        <Link href={`/student/assignments/${assignment.id}`} className="btn btn-ghost row" style={{ padding: "8px 0", gap: 8 }}>
             <span className="icon-flip">
               <BackIcon />
             </span>
             {t("common.back")}
-          </button>
-        </Link>
+          </Link>
 
         <div style={{ marginTop: 16 }}>
           <Steps current={0} items={stepLabels} />
@@ -94,7 +85,7 @@ export function UploadAssignmentClient({ assignment }: UploadAssignmentClientPro
           style={{ marginTop: 40 }}
         >
           <Eyebrow showDot>{t("upload.stepLabel")}</Eyebrow>
-          <h1 className="display" style={{ fontSize: 40 }}>
+          <h1 className="display">
             {t("upload.title")}
           </h1>
           <p className="subtitle">{t("upload.subtitle")}</p>
@@ -133,18 +124,10 @@ export function UploadAssignmentClient({ assignment }: UploadAssignmentClientPro
           </div>
         </div>
 
-        <div
-          className="row"
-          style={{ gap: 12, marginTop: 32, justifyContent: "flex-end" }}
-        >
-          <Link
-            href={`/student/assignments/${assignment.id}`}
-            style={{ textDecoration: "none" }}
-          >
-            <button type="button" className="btn btn-secondary btn-lg">
+        <div className="stack-actions" style={{ marginTop: 32 }}>
+          <Link href={`/student/assignments/${assignment.id}`} className="btn btn-secondary btn-lg">
               {t("upload.saveExit")}
-            </button>
-          </Link>
+            </Link>
           <button
             type="button"
             className="btn btn-primary btn-lg"

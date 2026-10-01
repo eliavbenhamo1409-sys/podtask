@@ -1,13 +1,10 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Link } from "@/lib/i18n/navigation";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Eyebrow } from "@/components/podtask/eyebrow";
-import {
-  ArrowIcon,
-  CheckIcon,
-  DownloadIcon,
-} from "@/components/podtask/icons";
+import { ArrowIcon, CheckIcon } from "@/components/podtask/icons";
 import {
   getInterviewWithAssignment,
   getReportForInterview,
@@ -15,9 +12,17 @@ import {
 } from "@/lib/student/student-service-server";
 import { formatTime } from "@/lib/utils";
 import { ScoreCard } from "./score-card";
+import { PrintButton } from "@/components/student/print-button";
+import { ConfettiBurst } from "@/components/podtask/confetti-burst";
 
 interface CompletePageProps {
   params: Promise<{ locale: string; interviewId: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string; interviewId: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.complete") };
 }
 
 export default async function CompletePage({ params }: CompletePageProps) {
@@ -34,13 +39,19 @@ export default async function CompletePage({ params }: CompletePageProps) {
   ]);
 
   const duration = data.interview.durationSeconds ?? 0;
-  const totalQuestions = data.interview.questions?.length || 10;
+  const totalQuestions = data.interview.questions?.length ?? 0;
+  const completedAt = data.interview.completedAt
+    ? new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(data.interview.completedAt))
+    : t("complete.justNow");
 
   return (
     <StudentAppShell>
       <div className="page-narrow" style={{ paddingTop: 60 }}>
         <div
-          className="card-hero"
+          className="card-hero card-pad-lg"
           style={{ padding: "56px 48px", textAlign: "center" }}
         >
           <div
@@ -51,6 +62,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
               margin: "0 auto 32px",
             }}
           >
+            <ConfettiBurst />
             <div
               style={{
                 position: "absolute",
@@ -99,7 +111,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
           </div>
 
           <Eyebrow showDot>{t("complete.sent")}</Eyebrow>
-          <h1 className="display" style={{ fontSize: 42, marginTop: 16 }}>
+          <h1 className="display" style={{ marginTop: 16 }}>
             {t("complete.title")}
           </h1>
           <p
@@ -120,13 +132,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
               textAlign: "center",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 24,
-              }}
-            >
+            <div className="grid-stats-3">
               <div>
                 <div
                   className="text-muted"
@@ -168,7 +174,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  {totalQuestions} / {totalQuestions}
+                  {totalQuestions > 0 ? totalQuestions : t("complete.questionsUnknown")}
                 </div>
               </div>
               <div>
@@ -190,7 +196,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                     letterSpacing: "-0.02em",
                   }}
                 >
-                  {t("complete.justNow")}
+                  <bdi>{completedAt}</bdi>
                 </div>
               </div>
             </div>
@@ -199,31 +205,23 @@ export default async function CompletePage({ params }: CompletePageProps) {
           <ScoreCard interviewId={interviewId} initial={report} />
 
           <div
-            className="row"
-            style={{ gap: 12, marginTop: 40, justifyContent: "center" }}
+            className="stack-actions no-print"
+            style={{ marginTop: 40, justifyContent: "center" }}
           >
-            <button
-              type="button"
-              className="btn btn-secondary btn-lg row"
-              style={{ gap: 8 }}
-            >
-              <DownloadIcon /> {t("complete.downloadConfirmation")}
-            </button>
-            <Link href="/student" style={{ textDecoration: "none" }}>
-              <button type="button" className="btn btn-primary btn-lg">
+            <PrintButton label={t("complete.print")} />
+            <Link href="/student" className="btn btn-primary btn-lg">
                 {t("complete.backToDashboard")}
                 <span className="icon-flip">
                   <ArrowIcon />
                 </span>
-              </button>
-            </Link>
+              </Link>
           </div>
 
           <div
             className="text-muted"
             style={{ fontSize: 12, marginTop: 32 }}
           >
-            {t("complete.copyEmailed")} {profile.email}
+            {t("complete.copyEmailed")} <bdi>{profile.email}</bdi>
           </div>
         </div>
       </div>

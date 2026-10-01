@@ -1,13 +1,21 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { Badge } from "@/components/podtask/chip";
-import { CheckIcon, ClockIcon } from "@/components/podtask/icons";
+import { ArrowIcon, CheckIcon, ClockIcon } from "@/components/podtask/icons";
+import { Link } from "@/lib/i18n/navigation";
 import { getStudentHistory } from "@/lib/student/student-service-server";
 import { formatTime } from "@/lib/utils";
 
 interface HistoryPageProps {
   params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.history") };
 }
 
 export default async function HistoryPage({ params }: HistoryPageProps) {
@@ -75,24 +83,42 @@ export default async function HistoryPage({ params }: HistoryPageProps) {
                     {e.courseName}
                   </div>
                   <div
-                    className="row"
-                    style={{
-                      gap: 16,
-                      marginTop: 16,
-                      fontSize: 12,
-                      color: "rgb(var(--ink-2))",
-                      fontWeight: 600,
-                    }}
+                    className="between"
+                    style={{ marginTop: 16, gap: 12, flexWrap: "wrap" }}
                   >
-                    <span>
-                      {t("history.uploaded")}:{" "}
-                      {intl.format(new Date(e.uploadedAt))}
-                    </span>
-                    <span style={{ color: "rgb(var(--line))" }}>·</span>
-                    <span>
-                      {t("history.interviewed")}:{" "}
-                      {intl.format(new Date(e.interviewedAt))}
-                    </span>
+                    <div
+                      className="row"
+                      style={{
+                        gap: 16,
+                        rowGap: 6,
+                        flexWrap: "wrap",
+                        fontSize: 12,
+                        color: "rgb(var(--ink-2))",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span>
+                        {t("history.uploaded")}:{" "}
+                        <bdi>{intl.format(new Date(e.uploadedAt))}</bdi>
+                      </span>
+                      <span style={{ color: "rgb(var(--line))" }}>·</span>
+                      <span>
+                        {t("history.interviewed")}:{" "}
+                        <bdi>{intl.format(new Date(e.interviewedAt))}</bdi>
+                      </span>
+                    </div>
+                    {e.interviewId && (
+                      <Link
+                        href={`/student/interviews/${e.interviewId}/complete`}
+                        className="btn btn-secondary"
+                        style={{ padding: "10px 16px", fontSize: 13 }}
+                      >
+                        {t("history.openReport")}
+                        <span className="icon-flip">
+                          <ArrowIcon size={14} />
+                        </span>
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))}

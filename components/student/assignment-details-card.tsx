@@ -22,17 +22,24 @@ export function AssignmentDetailsCard({
     ? t(`due.${assignment.dueLabelKey}`)
     : "";
   const estTime = `${assignment.estimatedInterviewMinutes} ${t("common.minutes")}`;
+  const badge =
+    assignment.badgeKind === "done"
+      ? { variant: "mint" as const, label: t("status.completed") }
+      : assignment.badgeKind === "next"
+        ? { variant: "cyan" as const, label: t("status.next") }
+        : { variant: "neutral" as const, label: t("status.scheduled") };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
-      className="card"
+      className="card card-pad"
       style={{ padding: 40 }}
     >
-      <Badge variant="cyan" showDot>
-        {t("status.next")} · {dueLabel}
+      <Badge variant={badge.variant} showDot>
+        {badge.label}
+        {dueLabel ? ` · ${dueLabel}` : ""}
       </Badge>
       <h1 className="title" style={{ fontSize: 34, marginTop: 16 }}>
         {assignment.title}
@@ -51,7 +58,7 @@ export function AssignmentDetailsCard({
         <Chip>
           <DocIcon /> {t("details.draftRequired")}
         </Chip>
-        <Chip>{t("details.topicsCount")}</Chip>
+        <Chip>{t("details.topicsCount", { count: assignment.topics.length })}</Chip>
       </div>
 
       <div
@@ -75,6 +82,29 @@ export function AssignmentDetailsCard({
       <p className="subtitle" style={{ fontSize: 15, marginTop: 8 }}>
         {assignment.instructions}
       </p>
+
+      {assignment.topics.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              color: "rgb(var(--muted))",
+              textTransform: "uppercase",
+            }}
+          >
+            {t("details.topics")}
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {assignment.topics.map((topic) => (
+              <Chip key={topic} variant="cyan">
+                {topic}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         className="card"

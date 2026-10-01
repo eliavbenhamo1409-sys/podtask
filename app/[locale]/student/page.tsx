@@ -1,9 +1,9 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { WelcomeHeader } from "@/components/student/welcome-header";
 import { SelfInitiatedHero } from "@/components/student/self-initiated-hero";
-import { AssignmentCard } from "@/components/student/assignment-card";
-import { Chip } from "@/components/podtask/chip";
+import { AssignmentGrid } from "@/components/student/assignment-grid";
 import { getStudentDashboard } from "@/lib/student/student-service-server";
 import { nextRouteForAssignment } from "@/lib/student/routing";
 import {
@@ -13,6 +13,12 @@ import {
 
 interface DashboardPageProps {
   params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.dashboard") };
 }
 
 export default async function DashboardPage({ params }: DashboardPageProps) {
@@ -34,45 +40,22 @@ export default async function DashboardPage({ params }: DashboardPageProps) {
         <SelfInitiatedHero />
 
         {lecturerAssignments.length > 0 && (
-          <>
-            <div className="between" style={{ marginTop: 48 }}>
-              <h2 className="title">{t("dashboard.allAssignments")}</h2>
-              <div className="row" style={{ gap: 8 }}>
-                <Chip variant="cyan" asButton>
-                  {t("dashboard.filterAll")} · {lecturerAssignments.length}
-                </Chip>
-                <Chip asButton>{t("dashboard.filterInProgress")}</Chip>
-                <Chip asButton>{t("dashboard.filterCompleted")}</Chip>
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: 24,
-                display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 20,
-              }}
-            >
-              {lecturerAssignments.map((a, i) => {
-                const submission = a.submissionId
-                  ? findMockSubmission(a.submissionId)
-                  : undefined;
-                const interview = a.interviewId
-                  ? findMockInterview(a.interviewId)
-                  : undefined;
-                const href = nextRouteForAssignment(a, submission, interview);
-                return (
-                  <AssignmentCard
-                    key={a.id}
-                    assignment={a}
-                    href={href}
-                    index={i}
-                  />
-                );
-              })}
-            </div>
-          </>
+          <AssignmentGrid
+            title={t("dashboard.allAssignments")}
+            style={{ marginTop: 48 }}
+            items={lecturerAssignments.map((a) => {
+              const submission = a.submissionId
+                ? findMockSubmission(a.submissionId)
+                : undefined;
+              const interview = a.interviewId
+                ? findMockInterview(a.interviewId)
+                : undefined;
+              return {
+                assignment: a,
+                href: nextRouteForAssignment(a, submission, interview),
+              };
+            })}
+          />
         )}
       </div>
     </StudentAppShell>

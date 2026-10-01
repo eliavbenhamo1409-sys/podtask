@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@/lib/i18n/navigation";
 import { Blobs } from "@/components/podtask/blobs";
@@ -16,6 +16,7 @@ const STALE_GUEST_COOKIE_CLEAR =
 
 export function LoginClient() {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,7 +80,7 @@ export function LoginClient() {
         password?: string;
         error?: string;
       }>("create-guest-session", {
-        body: { locale: "he" },
+        body: { locale },
       });
 
       if (invokeError || !data?.ok || !data.email || !data.password) {
@@ -88,7 +89,7 @@ export function LoginClient() {
         // routes are unavailable the user sees the disabled-anonymous hint.
         const { error: anonError } = await supabase.auth.signInAnonymously({
           options: {
-            data: { full_name: "Guest visitor", locale: "he" },
+            data: { full_name: "Guest visitor", locale },
           },
         });
         if (anonError) {
@@ -216,14 +217,7 @@ export function LoginClient() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{
-                  padding: "14px 18px",
-                  borderRadius: 14,
-                  border: "1px solid rgb(var(--line))",
-                  background: "white",
-                  fontSize: 15,
-                  outline: "none",
-                }}
+                className="input"
                 placeholder="you@university.edu"
               />
             </label>
@@ -247,14 +241,7 @@ export function LoginClient() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                style={{
-                  padding: "14px 18px",
-                  borderRadius: 14,
-                  border: "1px solid rgb(var(--line))",
-                  background: "white",
-                  fontSize: 15,
-                  outline: "none",
-                }}
+                className="input"
                 placeholder="••••••••"
               />
             </label>

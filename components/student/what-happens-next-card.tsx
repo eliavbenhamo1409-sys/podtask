@@ -58,7 +58,7 @@ export function WhatHappensNextCard({ uploadHref }: WhatHappensNextCardProps) {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay: 0.1 }}
-      className="card-hero"
+      className="card-hero sticky-aside card-pad"
       style={{ padding: 32, position: "sticky", top: 100 }}
     >
       <Eyebrow icon={<SparkIcon size={14} />}>
@@ -134,18 +134,12 @@ export function WhatHappensNextCard({ uploadHref }: WhatHappensNextCardProps) {
         ))}
       </div>
 
-      <Link href={uploadHref}>
-        <button
-          type="button"
-          className="btn btn-primary btn-lg"
-          style={{ width: "100%", marginTop: 32 }}
-        >
+      <Link href={uploadHref} className="btn btn-primary btn-lg" style={{ width: "100%", marginTop: 32 }}>
           {t("details.startUpload")}
           <span className="icon-flip">
             <ArrowIcon />
           </span>
-        </button>
-      </Link>
+        </Link>
       <div
         className="text-muted"
         style={{ fontSize: 12, textAlign: "center", marginTop: 16 }}

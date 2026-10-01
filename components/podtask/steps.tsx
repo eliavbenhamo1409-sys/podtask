@@ -26,7 +26,10 @@ export function Steps({ current, items, className }: StepsProps) {
                 }}
               />
             )}
-            <div className={cn("step", state === "active" && "active", state === "done" && "done")}>
+            <div
+              className={cn("step", state === "active" && "active", state === "done" && "done")}
+              aria-current={state === "active" ? "step" : undefined}
+            >
               <div className="step-num">
                 {state === "done" ? <CheckIcon size={14} /> : i + 1}
               </div>

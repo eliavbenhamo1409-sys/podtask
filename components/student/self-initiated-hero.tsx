@@ -22,17 +22,10 @@ export function SelfInitiatedHero() {
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, delay: 0.05 }}
-      className="card-hero"
+      className="card-hero card-pad"
       style={{ padding: 40, position: "relative", marginTop: 40 }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 360px",
-          gap: 40,
-          alignItems: "center",
-        }}
-      >
+      <div className="grid-hero">
         <div>
           <Eyebrow icon={<SparkIcon size={14} />}>
             {t("self.eyebrow")}
@@ -77,28 +70,22 @@ export function SelfInitiatedHero() {
             </li>
           </ul>
 
-          <div className="row" style={{ gap: 12, marginTop: 28 }}>
-            <Link href="/student/self/new" style={{ textDecoration: "none" }}>
-              <button type="button" className="btn btn-primary btn-lg">
+          <div className="row" style={{ gap: 12, marginTop: 28, flexWrap: "wrap" }}>
+            <Link href="/student/self/new" className="btn btn-primary btn-lg">
                 <UploadIcon size={18} />
                 {t("self.cta")}
                 <span className="icon-flip">
                   <ArrowIcon />
                 </span>
-              </button>
-            </Link>
-            <Link
-              href="/student/history"
-              style={{ textDecoration: "none" }}
-            >
-              <button type="button" className="btn btn-secondary btn-lg">
+              </Link>
+            <Link href="/student/history" className="btn btn-secondary btn-lg">
                 {t("self.viewPast")}
-              </button>
-            </Link>
+              </Link>
           </div>
         </div>
 
         <div
+          className="grid-hero-visual"
           style={{
             position: "relative",
             height: 280,
@@ -116,11 +103,7 @@ export function SelfInitiatedHero() {
               borderRadius: "50%",
             }}
           />
-          <GlowOrb
-            size={200}
-            float
-            style={{ animation: "spin 14s linear infinite, float 4s ease-in-out infinite" }}
-          />
+          <GlowOrb size={200} spinDuration={14} float />
           <div
             style={{
               position: "absolute",

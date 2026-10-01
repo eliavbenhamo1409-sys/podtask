@@ -9,6 +9,7 @@ interface ChipProps {
   className?: string;
   asButton?: boolean;
   onClick?: () => void;
+  ariaPressed?: boolean;
 }
 
 const variantClass: Record<ChipVariant, string> = {
@@ -24,12 +25,14 @@ export function Chip({
   className,
   asButton,
   onClick,
+  ariaPressed,
 }: ChipProps) {
   if (asButton) {
     return (
       <button
         type="button"
         onClick={onClick}
+        aria-pressed={ariaPressed}
         className={cn("chip", variantClass[variant], className)}
       >
         {children}

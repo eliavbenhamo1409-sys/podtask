@@ -7,6 +7,8 @@ import { Heebo, Manrope } from "next/font/google";
 import { routing } from "@/lib/i18n/routing";
 import { localeMeta, type Locale } from "@/lib/i18n/config";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { MotionProvider } from "@/components/providers/motion-provider";
+import type { Metadata, Viewport } from "next";
 
 const heebo = Heebo({
   subsets: ["hebrew", "latin"],
@@ -22,9 +24,14 @@ const manrope = Manrope({
   display: "swap",
 });
 
-export const metadata = {
-  title: "Podtask",
+export const metadata: Metadata = {
+  title: { default: "Podtask", template: "%s · Podtask" },
   description: "AI-led podcast-style academic interview studio.",
+  icons: { icon: "/podtask-logo.png", apple: "/podtask-logo.png" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#FAFCFF",
 };
 
 export function generateStaticParams() {
@@ -59,7 +66,9 @@ export default async function LocaleLayout({
     >
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <MotionProvider>{children}</MotionProvider>
+          </QueryProvider>
         </NextIntlClientProvider>
       </body>
     </html>

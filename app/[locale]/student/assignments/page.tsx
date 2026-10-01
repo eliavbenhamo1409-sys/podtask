@@ -1,7 +1,7 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { StudentAppShell } from "@/components/student/student-app-shell";
-import { AssignmentCard } from "@/components/student/assignment-card";
-import { Chip } from "@/components/podtask/chip";
+import { AssignmentGrid } from "@/components/student/assignment-grid";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { getStudentAssignments } from "@/lib/student/student-service-server";
 import { nextRouteForAssignment } from "@/lib/student/routing";
@@ -12,6 +12,12 @@ import {
 
 interface AssignmentsPageProps {
   params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("dashboard.allAssignments") };
 }
 
 export default async function AssignmentsPage({ params }: AssignmentsPageProps) {
@@ -29,35 +35,21 @@ export default async function AssignmentsPage({ params }: AssignmentsPageProps) 
           {t("dashboard.subtitle")}
         </p>
 
-        <div className="row" style={{ gap: 8, marginTop: 24, flexWrap: "wrap" }}>
-          <Chip variant="cyan" asButton>
-            {t("dashboard.filterAll")} · {assignments.length}
-          </Chip>
-          <Chip asButton>{t("dashboard.filterInProgress")}</Chip>
-          <Chip asButton>{t("dashboard.filterCompleted")}</Chip>
-        </div>
-
-        <div
-          style={{
-            marginTop: 32,
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: 20,
-          }}
-        >
-          {assignments.map((a, i) => {
+        <AssignmentGrid
+          style={{ marginTop: 24 }}
+          items={assignments.map((a) => {
             const submission = a.submissionId
               ? findMockSubmission(a.submissionId)
               : undefined;
             const interview = a.interviewId
               ? findMockInterview(a.interviewId)
               : undefined;
-            const href = nextRouteForAssignment(a, submission, interview);
-            return (
-              <AssignmentCard key={a.id} assignment={a} href={href} index={i} />
-            );
+            return {
+              assignment: a,
+              href: nextRouteForAssignment(a, submission, interview),
+            };
           })}
-        </div>
+        />
       </div>
     </StudentAppShell>
   );

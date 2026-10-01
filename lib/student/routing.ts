@@ -5,12 +5,39 @@
  */
 import type { StudentAssignment, StudentInterview, StudentSubmission } from "./types";
 
+function routeFromStatus(assignment: StudentAssignment): string {
+  const sub = assignment.submissionId;
+  const int = assignment.interviewId;
+  switch (assignment.status) {
+    case "processing":
+    case "failed":
+      return `/student/submissions/${sub}/processing`;
+    case "mic_test_required":
+      return `/student/submissions/${sub}/mic-test`;
+    case "ready_for_interview":
+      return `/student/submissions/${sub}/lobby`;
+    case "interview_in_progress":
+      return int ? `/student/interviews/${int}` : `/student/submissions/${sub}/lobby`;
+    case "completed":
+      return int
+        ? `/student/interviews/${int}/complete`
+        : `/student/assignments/${assignment.id}`;
+    default:
+      return `/student/assignments/${assignment.id}/upload`;
+  }
+}
+
 export function nextRouteForAssignment(
   assignment: StudentAssignment,
   submission?: StudentSubmission,
   interview?: StudentInterview,
 ): string {
   if (!submission) {
+    // Real-mode callers only have the derived status plus the ids; route
+    // from those so a completed card does not fall back to /upload.
+    if (assignment.submissionId) {
+      return routeFromStatus(assignment);
+    }
     return `/student/assignments/${assignment.id}/upload`;
   }
 

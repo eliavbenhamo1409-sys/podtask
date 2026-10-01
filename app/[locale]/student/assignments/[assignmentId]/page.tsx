@@ -1,4 +1,5 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { AssignmentDetailsCard } from "@/components/student/assignment-details-card";
@@ -9,6 +10,15 @@ import { getAssignmentById } from "@/lib/student/student-service-server";
 
 interface AssignmentDetailsPageProps {
   params: Promise<{ locale: string; assignmentId: string }>;
+}
+
+export async function generateMetadata({
+  params,
+}: AssignmentDetailsPageProps): Promise<Metadata> {
+  const { locale, assignmentId } = await params;
+  const t = await getTranslations({ locale });
+  const assignment = await getAssignmentById(assignmentId);
+  return { title: assignment?.title ?? t("screens.details") };
 }
 
 export default async function AssignmentDetailsPage({
@@ -26,27 +36,14 @@ export default async function AssignmentDetailsPage({
   return (
     <StudentAppShell>
       <div className="page">
-        <Link href="/student" style={{ textDecoration: "none" }}>
-          <button
-            type="button"
-            className="btn btn-ghost row"
-            style={{ padding: "8px 0", marginBottom: 8, gap: 8 }}
-          >
+        <Link href="/student" className="btn btn-ghost row" style={{ padding: "8px 0", marginBottom: 8, gap: 8 }}>
             <span className="icon-flip">
               <BackIcon />
             </span>
             {t("common.back")}
-          </button>
-        </Link>
+          </Link>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1fr",
-            gap: 32,
-            alignItems: "start",
-          }}
-        >
+        <div className="grid-split">
           <AssignmentDetailsCard assignment={assignment} />
           <WhatHappensNextCard uploadHref={uploadHref} />
         </div>

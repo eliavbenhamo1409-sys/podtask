@@ -1,4 +1,5 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Link } from "@/lib/i18n/navigation";
 import { StudentAppShell } from "@/components/student/student-app-shell";
@@ -17,6 +18,12 @@ interface LobbyPageProps {
   params: Promise<{ locale: string; submissionId: string }>;
 }
 
+export async function generateMetadata({ params }: { params: Promise<{ locale: string; submissionId: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.lobby") };
+}
+
 export default async function LobbyPage({ params }: LobbyPageProps) {
   const { locale, submissionId } = await params;
   setRequestLocale(locale);
@@ -30,12 +37,23 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
     { titleKey: "lobby.tip3Title", bodyKey: "lobby.tip3Body" },
   ];
 
-  const topics = [
-    t("lobby.topic1"),
-    t("lobby.topic2"),
-    t("lobby.topic3"),
-    t("lobby.topic4"),
-  ];
+  // Prefer the real interview plan, then the assignment's own topics, and
+  // only fall back to the demo strings when neither is available.
+  const planTopics = Array.from(
+    new Set(lobby.interview.questions.map((q) => q.topic).filter(Boolean)),
+  );
+  const topics =
+    planTopics.length > 0
+      ? planTopics
+      : lobby.assignment.topics.length > 0
+        ? lobby.assignment.topics
+        : [
+            t("lobby.topic1"),
+            t("lobby.topic2"),
+            t("lobby.topic3"),
+            t("lobby.topic4"),
+          ];
+  const estMinutes = lobby.assignment.estimatedInterviewMinutes;
 
   return (
     <StudentAppShell blobsVariant="studio">
@@ -45,31 +63,27 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
             {t("status.studioReady")}
           </Badge>
         </div>
-        <h1 className="display" style={{ fontSize: 42, marginTop: 16 }}>
+        <h1 className="display" style={{ marginTop: 16 }}>
           {t("lobby.title")}
         </h1>
         <p className="subtitle" style={{ maxWidth: 580 }}>
           {t("lobby.subtitle")}
         </p>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.1fr 1fr",
-            gap: 32,
-            marginTop: 40,
-            alignItems: "start",
-          }}
-        >
+        <div className="grid-split-even" style={{ marginTop: 40 }}>
           <div
-            className="card-hero"
+            className="card-hero card-pad"
             style={{ padding: 36, position: "relative", overflow: "hidden" }}
           >
             <div className="between">
               <Eyebrow icon={<MicIcon size={14} />}>
                 {t("lobby.podcastInterview")}
               </Eyebrow>
-              <Chip variant="cyan">{t("lobby.estTime")}</Chip>
+              <Chip variant="cyan">
+                {estMinutes
+                  ? t("lobby.estTimeMinutes", { minutes: estMinutes })
+                  : t("lobby.estTime")}
+              </Chip>
             </div>
 
             <div
@@ -160,18 +174,9 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
             </div>
 
             <div style={{ marginTop: 32 }}>
-              <Link
-                href={`/student/submissions/${submissionId}/mic-test`}
-                style={{ textDecoration: "none" }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-primary btn-lg"
-                  style={{ width: "100%" }}
-                >
+              <Link href={`/student/submissions/${submissionId}/mic-test`} className="btn btn-primary btn-lg" style={{ width: "100%" }}>
                   <MicIcon size={18} /> {t("lobby.testMicAndStart")}
-                </button>
-              </Link>
+                </Link>
               <div
                 className="text-muted"
                 style={{ fontSize: 12, textAlign: "center", marginTop: 16 }}
@@ -182,7 +187,7 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
           </div>
 
           <div>
-            <div className="card" style={{ padding: 32 }}>
+            <div className="card card-pad" style={{ padding: 32 }}>
               <Eyebrow icon={<SparkIcon size={14} />}>
                 {t("lobby.beforeYouStart")}
               </Eyebrow>

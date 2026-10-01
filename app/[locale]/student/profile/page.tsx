@@ -1,10 +1,18 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { getStudentProfile } from "@/lib/student/student-service-server";
+import { LogoutButton } from "@/components/student/logout-button";
 
 interface ProfilePageProps {
   params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.profile") };
 }
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
@@ -54,7 +62,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 {profile.fullName}
               </div>
               <div className="text-muted" style={{ fontSize: 14 }}>
-                {profile.email}
+                <bdi>{profile.email}</bdi>
               </div>
             </div>
           </div>
@@ -69,29 +77,23 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
           <div className="flex-col" style={{ gap: 14 }}>
             {fields.map((f) => (
-              <div key={f.label} className="between">
+              <div key={f.label} className="between" style={{ gap: 16, flexWrap: "wrap" }}>
                 <div
                   className="text-muted"
                   style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}
                 >
                   {f.label}
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{f.value}</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  <bdi>{f.value}</bdi>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div
-          className="row"
-          style={{ gap: 12, marginTop: 24, justifyContent: "flex-end" }}
-        >
-          <button type="button" className="btn btn-secondary">
-            {t("profile.logout")}
-          </button>
-          <button type="button" className="btn btn-primary">
-            {t("profile.save")}
-          </button>
+        <div className="stack-actions" style={{ marginTop: 24 }}>
+          <LogoutButton label={t("profile.logout")} />
         </div>
       </div>
     </StudentAppShell>

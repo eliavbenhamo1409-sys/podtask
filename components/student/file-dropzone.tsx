@@ -73,6 +73,8 @@ export function FileDropzone({
         animate={{ opacity: 1, y: 0 }}
         className="card"
         style={{ padding: 28, marginTop: 32 }}
+        role="status"
+        aria-live="polite"
       >
         <div className="row" style={{ gap: 16 }}>
           <div
@@ -91,11 +93,13 @@ export function FileDropzone({
           >
             <DocIcon size={26} />
           </div>
-          <div style={{ flex: 1 }}>
-            <div className="between">
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>
-                  {selected.name}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{ fontWeight: 800, fontSize: 16, overflowWrap: "anywhere" }}
+                >
+                  <bdi>{selected.name}</bdi>
                 </div>
                 <div
                   className="text-muted"
@@ -118,6 +122,11 @@ export function FileDropzone({
               )}
             </div>
             <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress}
+              aria-label={t("status.uploading")}
               style={{
                 marginTop: 14,
                 height: 6,
@@ -159,7 +168,16 @@ export function FileDropzone({
         animate={{ opacity: 1, y: 0 }}
         className={cn("dropzone", drag && "drag")}
         style={{ marginTop: 32, cursor: "pointer" }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${t("upload.dropHere")} — ${t("upload.orClick")}`}
         onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           setDrag(true);
@@ -218,7 +236,7 @@ export function FileDropzone({
         </div>
         <div
           className="row"
-          style={{ gap: 12, marginTop: 24, justifyContent: "center" }}
+          style={{ gap: 12, marginTop: 24, justifyContent: "center", flexWrap: "wrap" }}
         >
           <Chip>PDF</Chip>
           <Chip>DOCX</Chip>
@@ -237,6 +255,7 @@ export function FileDropzone({
       <AnimatePresence>
         {error && (
           <motion.div
+            role="alert"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}

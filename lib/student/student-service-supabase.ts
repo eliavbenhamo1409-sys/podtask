@@ -367,6 +367,7 @@ export async function getStudentHistorySb(
     const s = Array.isArray(sRaw) ? sRaw[0] : sRaw;
     return {
       assignmentId: row.assignment_id,
+      interviewId: row.id,
       title: a?.title ?? "",
       courseName: course?.name ?? "",
       uploadedAt: s?.submitted_at ?? row.completed_at ?? "",

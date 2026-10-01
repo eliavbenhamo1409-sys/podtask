@@ -89,6 +89,7 @@ export interface StudentDashboard {
 
 export interface StudentHistoryEntry {
   assignmentId: string;
+  interviewId?: string;
   title: string;
   courseName: string;
   uploadedAt: string;

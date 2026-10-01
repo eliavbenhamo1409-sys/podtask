@@ -10,7 +10,12 @@
     "language": "Language",
     "switchToEnglish": "English",
     "switchToHebrew": "עברית",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "primary": "Primary",
+    "dashboard": "Dashboard",
+    "history": "History",
+    "help": "Help",
+    "profile": "My profile"
   },
   "common": {
     "back": "Back",
@@ -74,7 +79,12 @@
     "allAssignments": "Lecturer assignments",
     "filterAll": "All",
     "filterInProgress": "In progress",
-    "filterCompleted": "Completed"
+    "filterCompleted": "Completed",
+    "greetingMorning": "Good morning",
+    "greetingNoon": "Good afternoon",
+    "greetingEvening": "Good evening",
+    "greetingNight": "Good night",
+    "filterEmpty": "No assignments in this category right now."
   },
   "self": {
     "eyebrow": "Quick start",
@@ -96,7 +106,7 @@
   },
   "details": {
     "lecturer": "Prof. Eleanor Hartwell",
-    "topicsCount": "3 topics",
+    "topicsCount": "{count, plural, one {# topic} other {# topics}}",
     "draftRequired": "Draft required",
     "instructions": "Instructions",
     "lecturerTipTitle": "Tip from the lecturer",
@@ -113,7 +123,8 @@
     "stepFinish": "Finish",
     "stepFinishDesc": "That's it. Your submission receipt arrives by email.",
     "startUpload": "Start the upload",
-    "pauseAnytime": "You can pause and come back anytime."
+    "pauseAnytime": "You can pause and come back anytime.",
+    "topics": "Topics we'll cover"
   },
   "upload": {
     "stepLabel": "Step 01 · Upload",
@@ -171,7 +182,8 @@
     "tip3Title": "Don't memorize",
     "tip3Body": "It's a conversation, not a recital. Trust your draft.",
     "stuckTitle": "Stuck on a question?",
-    "stuckBody": "Say \"I'm not sure\" and Aria will rephrase or move on. No penalty."
+    "stuckBody": "Say \"I'm not sure\" and Aria will rephrase or move on. No penalty.",
+    "estTimeMinutes": "~{minutes} min"
   },
   "micTest": {
     "back": "Back to lobby",
@@ -194,7 +206,12 @@
     "playRecording": "Play recording",
     "playingNow": "Playing",
     "recordAgain": "Record again",
-    "startInterview": "Start interview"
+    "startInterview": "Start interview",
+    "recordingLimit": "Up to 10 seconds · tap again to stop",
+    "recordedSeconds": "{seconds} seconds recorded",
+    "silentRecording": "We did not detect any sound. Check that your microphone is not muted and try again.",
+    "recorderUnsupported": "This browser cannot record a test clip. You can still continue to the interview.",
+    "levelLabel": "Input level"
   },
   "interview": {
     "live": "Live interview",
@@ -241,7 +258,17 @@
     "connecting": "Connecting…",
     "greetingLine": "The host is starting the interview. Speak naturally.",
     "continueToNext": "Continue to next question",
-    "finishFromCard": "Finish interview"
+    "finishFromCard": "Finish interview",
+    "skipQuestion": "Skip question",
+    "replaceQuestion": "Swap question",
+    "replaceUsed": "Swap used",
+    "skipBannerTitle": "Skip question {n}?",
+    "skipBannerBody": "The skip is recorded in the report and lowers your score. The host will move on to the next question.",
+    "skipConfirm": "Yes, skip",
+    "replaceBannerTitle": "Swap question {n}?",
+    "replaceBannerBody": "You can swap a question once per interview. The host will ask a different question on the same material, with no effect on your score.",
+    "replaceConfirm": "Swap",
+    "farewell": "The host is saying goodbye — wrapping up in a moment."
   },
   "complete": {
     "sent": "Sent",
@@ -274,7 +301,19 @@
     "transcriptTitle": "Interview transcript",
     "transcriptHost": "Host",
     "transcriptYou": "You",
-    "transcriptEmpty": "No transcript was captured for this interview."
+    "transcriptEmpty": "No transcript was captured for this interview.",
+    "scoringStep1": "Reading the interview transcript…",
+    "scoringStep2": "Mapping your answers against your submission…",
+    "scoringStep3": "Scoring against the four rubric criteria…",
+    "scoringStep4": "Writing the summary and recommendations…",
+    "scoringLabel1": "Transcript",
+    "scoringLabel2": "Mapping",
+    "scoringLabel3": "Scoring",
+    "scoringLabel4": "Summary",
+    "scoringSlow": "This is taking a little longer than usual. You can stay on this page — the score will appear here as soon as it is ready.",
+    "refresh": "Refresh",
+    "print": "Print confirmation",
+    "questionsUnknown": "—"
   },
   "history": {
     "title": "Assignment history",
@@ -282,7 +321,8 @@
     "empty": "No completed interviews yet. After your first one, it will show up here.",
     "uploaded": "Uploaded",
     "interviewed": "Interviewed",
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "openReport": "Open report"
   },
   "profile": {
     "title": "Your profile",
@@ -324,5 +364,10 @@
     "or": "or",
     "continueAsGuest": "Continue as guest",
     "guestHint": "Anonymous session — real uploads and scoring, no email yet"
+  },
+  "notFound": {
+    "title": "Page not found.",
+    "body": "The link you followed does not exist, or the assignment was removed.",
+    "cta": "Back to dashboard"
   }
 }

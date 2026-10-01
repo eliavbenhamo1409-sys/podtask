@@ -97,7 +97,7 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
           style={{ paddingTop: 60 }}
         >
           <div
-            className="card-hero"
+            className="card-hero card-pad-lg"
             style={{ padding: "56px 48px", textAlign: "center" }}
           >
             <h1 className="title" style={{ fontSize: 28 }}>
@@ -122,7 +122,7 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
     <StudentAppShell blobsVariant="studio">
       <div className="page-narrow" style={{ paddingTop: 60 }}>
         <div
-          className="card-hero"
+          className="card-hero card-pad-lg"
           style={{ padding: "56px 48px", textAlign: "center" }}
         >
           <Eyebrow icon={<SparkIcon size={14} />}>
@@ -161,15 +161,9 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
             />
             <GlowOrb
               size={200}
+              spinDuration={10}
               float
-              style={{
-                position: "absolute",
-                top: "50%",
-                insetInlineStart: "50%",
-                transform: "translate(-50%,-50%)",
-                animation:
-                  "spin 10s linear infinite, float 4s ease-in-out infinite",
-              }}
+              style={{ position: "absolute", top: 40, insetInlineStart: 40 }}
             />
             {ORBIT_DOTS.map((dot, i) => (
               <div
@@ -190,11 +184,11 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
             ))}
           </div>
 
-          <div style={{ minHeight: 32 }}>
+          <div style={{ minHeight: 32 }} aria-live="polite">
             <AnimatePresence mode="wait">
-              {step < MESSAGE_KEYS.length ? (
+              {status !== "interview_ready" ? (
                 <motion.div
-                  key={step}
+                  key={Math.min(step, MESSAGE_KEYS.length - 1)}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
@@ -204,7 +198,7 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
                     color: "rgb(var(--ink-2))",
                   }}
                 >
-                  {t(MESSAGE_KEYS[step])}
+                  {t(MESSAGE_KEYS[Math.min(step, MESSAGE_KEYS.length - 1)])}
                 </motion.div>
               ) : (
                 <motion.div

@@ -1,10 +1,17 @@
 import { setRequestLocale, getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { QuestionIcon, SparkIcon } from "@/components/podtask/icons";
 
 interface HelpPageProps {
   params: Promise<{ locale: string }>;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale });
+  return { title: t("screens.help") };
 }
 
 export default async function HelpPage({ params }: HelpPageProps) {
