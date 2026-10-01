@@ -6,19 +6,21 @@ interface StudentAppShellProps {
   children: ReactNode;
   studentInitial?: string;
   blobsVariant?: "default" | "studio";
-  hideTopBar?: boolean;
 }
 
+/**
+ * Shared frame for every student screen except login and the live interview
+ * room (those render their own chrome): background blobs + top bar + content.
+ */
 export function StudentAppShell({
   children,
   studentInitial = "מ",
   blobsVariant = "default",
-  hideTopBar,
 }: StudentAppShellProps) {
   return (
     <div className="screen" style={{ minHeight: "100vh", position: "relative" }}>
       <Blobs variant={blobsVariant} />
-      {!hideTopBar && <TopBar studentInitial={studentInitial} />}
+      <TopBar studentInitial={studentInitial} />
       <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
     </div>
   );

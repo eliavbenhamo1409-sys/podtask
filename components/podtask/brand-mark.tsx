@@ -1,5 +1,4 @@
 import Image from "next/image";
-import { cn } from "@/lib/utils";
 
 interface BrandMarkProps {
   size?: number;
@@ -14,7 +13,7 @@ export function BrandMark({ size = 40, className }: BrandMarkProps) {
       width={size}
       height={size}
       priority
-      className={cn("brand-mark-img", className)}
+      className={className}
       style={{ width: size, height: size, objectFit: "contain" }}
     />
   );

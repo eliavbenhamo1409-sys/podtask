@@ -1,9 +1,7 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-import { useRouter, usePathname } from "@/lib/i18n/navigation";
-import { useLocale } from "next-intl";
-import { Link } from "@/lib/i18n/navigation";
+import { useLocale, useTranslations } from "next-intl";
+import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { BrandMark } from "./brand-mark";
 import { BellIcon, GlobeIcon, SearchIcon } from "./icons";
 import type { Locale } from "@/lib/i18n/config";
@@ -48,6 +46,9 @@ export function TopBar({ studentInitial = "?" }: TopBarProps) {
         </div>
       </Link>
       <div className="row" style={{ gap: 14 }}>
+        {/* Placeholders: search and notifications are not implemented yet.
+            The buttons are intentionally inert (design parity with the
+            prototype); only the language toggle below is wired. */}
         <button
           type="button"
           className="nav-pill row"
