@@ -2,17 +2,17 @@
 # Deploy the Next.js app to Vercel production.
 #
 # Vercel is connected to GitHub (eliavbenhamo1409-sys/podtask); every push to
-# `main` triggers a production build. This script:
-#   1. typechecks
-#   2. commits any staged/unstaged changes (message = $1, or "-m" style)
+# `main` triggers a production build. This script is deliberately narrow:
+#   1. refuses to run with uncommitted changes (commit explicitly first, so a
+#      stray working-tree edit never ships by accident)
+#   2. runs the local gates: typecheck + lint
 #   3. pushes main
 #   4. polls the GitHub commit status that Vercel reports until it settles
 #   5. prints the live URL (https://podtask.vercel.app)
 #
 # Usage:
-#   scripts/deploy.sh "feat: my change"     # commit + push + wait
-#   scripts/deploy.sh                       # push already-committed work + wait
-#   scripts/deploy.sh --wait-only           # only poll the current HEAD
+#   scripts/deploy.sh               # gate, push HEAD, wait for Vercel
+#   scripts/deploy.sh --wait-only   # only poll the current HEAD
 set -euo pipefail
 
 REPO="eliavbenhamo1409-sys/podtask"
@@ -27,18 +27,13 @@ if [[ "${1:-}" != "--wait-only" ]]; then
     echo "✗ not on $BRANCH (on $(git rev-parse --abbrev-ref HEAD)); merge first" >&2
     exit 1
   fi
-
-  npm run --silent typecheck
-
   if [[ -n "$(git status --porcelain)" ]]; then
-    if [[ -z "${1:-}" ]]; then
-      echo "✗ uncommitted changes but no commit message given" >&2
-      exit 1
-    fi
-    git add -A
-    git commit -q -m "$1" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+    echo "✗ working tree has uncommitted changes; commit (or stash) them first:" >&2
+    git status --short >&2
+    exit 1
   fi
 
+  npm run --silent check
   git push -q origin "$BRANCH"
 fi
 

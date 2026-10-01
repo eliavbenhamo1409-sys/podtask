@@ -18,3 +18,8 @@ next-env.d.ts
 .turbo/
 tsconfig.tsbuildinfo
 
+
+# local tool caches
+supabase/.temp/
+.vercel/
+.claude/settings.local.json
