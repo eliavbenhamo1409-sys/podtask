@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
           type: "function",
           name: "finish_interview",
           description:
-            "Call this tool to end the interview. Pass reason='completed' after you've delivered your warm closing sentence at the end of the planned questions, or reason='ended_early' when the student verbally asks to wrap up before the plan is done.",
+            "Ends the interview. Call it ONLY AFTER you have completely finished speaking your farewell (acknowledgement, thank-you, goodbye) — calling it mid-sentence cuts your audio off. reason='completed' after the planned questions, reason='ended_early' when the student asked to stop. If the system afterwards asks you for a farewell, say it in full.",
           parameters: {
             type: "object",
             additionalProperties: false,

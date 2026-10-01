@@ -84,18 +84,17 @@ both (or only to the one whose runtime needs it) and keep the mock branch.
 
 ## 7. Known issues (audit, 2026-10-01) — not fixed, owner decision needed
 
-1. **Repo ≠ production for two edge functions.** The deployed
-   `create-realtime-session` and `generate-report` differ from the repo
-   (prompt text / scoring lines). Redeploying from the repo silently changes
-   live model behaviour. Reconcile before any redeploy (`supabase/functions/README.md`).
+1. ~~Repo ≠ production for two edge functions.~~ Reconciled 2026-10-01
+   (`create-realtime-session` v13, `generate-report` v6 deployed from the repo).
 2. **`create-realtime-session` has no status guard.** One interview minted
    1,677 client secrets; the lobby/room can re-invoke it freely. Add a guard
    on `interviews.status` and/or a rate limit.
 3. **`complete-interview` is not idempotent.** A second call regresses
    `submissions.status` from `report_ready` to `interview_completed` and
    overwrites `completed_at`/`duration_seconds`.
-4. **Live mode never advances `questionIndex` in the FSM**, so every persisted
-   message is bound to the first plan question; `generate-report` groups by it.
+4. ~~Live mode never advances `questionIndex`.~~ Fixed 2026-10-01: the room
+   mirrors the host's ordinal announcements into the FSM and binds persisted
+   messages to the detected plan question.
 5. **Student answers may be persisted twice** (both `conversation.item.done`
    and `input_audio_transcription.completed` carry the text).
 6. **Real-mode dashboard cards all link to `/upload`**: the server pages resolve

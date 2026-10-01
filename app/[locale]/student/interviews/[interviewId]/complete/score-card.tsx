@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eyebrow } from "@/components/podtask/eyebrow";
+import { GlowOrb } from "@/components/podtask/glow-orb";
+import { Steps } from "@/components/podtask/steps";
 import { SparkIcon } from "@/components/podtask/icons";
 import {
   getInterviewTranscript,
@@ -19,7 +21,94 @@ interface ScoreCardProps {
 }
 
 const POLL_INTERVAL_MS = 1500;
-const MAX_POLL_MS = 90_000;
+const MAX_POLL_MS = 180_000;
+
+// The scoring call is a single opaque request (~30-60 s), so the progress
+// shown while waiting is time-based: it walks through the real stages of
+// the pipeline and parks on the last one until the report lands.
+const SCORING_STEP_KEYS = [
+  "complete.scoringStep1",
+  "complete.scoringStep2",
+  "complete.scoringStep3",
+  "complete.scoringStep4",
+] as const;
+const SCORING_LABEL_KEYS = [
+  "complete.scoringLabel1",
+  "complete.scoringLabel2",
+  "complete.scoringLabel3",
+  "complete.scoringLabel4",
+] as const;
+const SCORING_STEP_MS = 2600;
+
+function ScoringProgress({ timedOut }: { timedOut: boolean }) {
+  const t = useTranslations();
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(
+      () => setStep((s) => Math.min(s + 1, SCORING_STEP_KEYS.length - 1)),
+      SCORING_STEP_MS,
+    );
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="card"
+      style={{
+        marginTop: 32,
+        padding: "32px 32px 28px",
+        textAlign: "center",
+        background: "rgba(246,251,255,0.7)",
+        borderRadius: 24,
+        boxShadow: "none",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+        <GlowOrb size={88} spinDuration={3} float />
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 800 }}>{t("complete.scoring")}</div>
+      <div style={{ minHeight: 24, marginTop: 8 }}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.25 }}
+            className="text-muted"
+            style={{ fontSize: 14, fontWeight: 600 }}
+            aria-live="polite"
+          >
+            {t(SCORING_STEP_KEYS[step])}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <Steps
+        current={step}
+        items={SCORING_LABEL_KEYS.map((k) => t(k))}
+        className="mt-6"
+      />
+      <div
+        className="text-muted"
+        style={{ fontSize: 12, marginTop: 18, lineHeight: 1.6 }}
+      >
+        {timedOut ? t("complete.scoringSlow") : t("complete.scoringHint")}
+      </div>
+      {timedOut && (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ marginTop: 14 }}
+          onClick={() => window.location.reload()}
+        >
+          {t("complete.refresh")}
+        </button>
+      )}
+    </motion.div>
+  );
+}
 
 const LEVEL_KEYS = {
   low: "complete.levelLow",
@@ -42,6 +131,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
   const [transcript, setTranscript] = useState<InterviewTranscript | null>(
     null,
   );
+  const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
     if (report && report.status === "ready") return;
@@ -57,7 +147,10 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
         } catch {
           // Swallow transient errors; we'll retry on the next tick.
         }
-        if (Date.now() - start > MAX_POLL_MS) return;
+        if (Date.now() - start > MAX_POLL_MS) {
+          if (!cancelled) setTimedOut(true);
+          return;
+        }
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
     };
@@ -83,42 +176,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
   }, [interviewId]);
 
   if (!report || report.status !== "ready") {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card"
-        style={{
-          marginTop: 32,
-          padding: 32,
-          textAlign: "center",
-          background: "rgba(246,251,255,0.7)",
-          borderRadius: 24,
-          boxShadow: "none",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            margin: "0 auto 18px",
-            border: "3px solid rgba(125,211,252,0.4)",
-            borderTopColor: "rgb(var(--cyan))",
-            animation: "spin 1s linear infinite",
-          }}
-        />
-        <div style={{ fontSize: 18, fontWeight: 800 }}>
-          {t("complete.scoring")}
-        </div>
-        <div
-          className="text-muted"
-          style={{ fontSize: 13, marginTop: 6, lineHeight: 1.6 }}
-        >
-          {t("complete.scoringHint")}
-        </div>
-      </motion.div>
-    );
+    return <ScoringProgress timedOut={timedOut} />;
   }
 
   const level = report.overallLevel ?? "medium";

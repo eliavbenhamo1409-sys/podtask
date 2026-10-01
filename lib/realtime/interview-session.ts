@@ -228,22 +228,43 @@ export function useInterviewSession({
       }
       dispatch({ type: "STUDENT_FINISH_RECORDING", transcript });
     },
-    persistAssistantMessage: (text: string) => {
+    // `planQuestionId` lets the live room bind a message to the question it
+    // detected in the same tick (the ref below only updates after render).
+    persistAssistantMessage: (text: string, planQuestionId?: string | null) => {
       void saveInterviewMessage({
         interviewId,
         speaker: "ai_host",
         messageType: "question",
         content: text,
-        planQuestionId: currentPlanQuestionIdRef.current,
+        planQuestionId:
+          planQuestionId !== undefined ? planQuestionId : currentPlanQuestionIdRef.current,
+      }).catch(() => {
+        /* best-effort; the transcript is a convenience, not a gate */
       });
     },
-    persistStudentMessage: (text: string) => {
+    persistStudentMessage: (text: string, planQuestionId?: string | null) => {
       void saveInterviewMessage({
         interviewId,
         speaker: "student",
         messageType: "answer",
         content: text,
-        planQuestionId: currentPlanQuestionIdRef.current,
+        planQuestionId:
+          planQuestionId !== undefined ? planQuestionId : currentPlanQuestionIdRef.current,
+      }).catch(() => {
+        /* best-effort */
+      });
+    },
+    // Structured events the report generator understands, e.g.
+    // "skipped_question:3" / "replaced_question:2".
+    persistSystemMessage: (content: string, planQuestionId: string | null) => {
+      void saveInterviewMessage({
+        interviewId,
+        speaker: "system",
+        messageType: "system",
+        content,
+        planQuestionId,
+      }).catch(() => {
+        /* best-effort */
       });
     },
     nextQuestion: () => dispatch({ type: "NEXT_QUESTION" }),

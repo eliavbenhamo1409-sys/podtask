@@ -5,14 +5,15 @@
  * analysis.
  *
  * Architecture: the host receives the FULL planned question list up front
- * and runs the conversation autonomously. The previous "inject one question
- * at a time via locked tool_choice" protocol has been removed — it caused
- * hangs (a missed tool call would freeze the interview) and forced the UI
- * to expose a question card / per-question button. The simpler model is:
- *   • The plan is in the system prompt.
- *   • The host walks through it in order, deepening with follow-ups.
- *   • The host decides when to move on, when to wrap up, and when (rarely)
- *     to call `finish_interview` to end early.
+ * and runs the conversation autonomously. The browser only (a) streams the
+ * transcript, (b) injects "system notes" (skip / swap requests, see
+ * lib/realtime/host-directives.ts) as user text messages, and (c) decides
+ * when the session actually closes — it always lets the farewell finish and,
+ * if the host ended without one, asks for it with a per-response instruction.
+ *
+ * CROSS-RUNTIME CONTRACT: the ordinal words and the farewell wording here
+ * are parsed on the browser side by lib/realtime/host-text-heuristics.ts.
+ * Change both together.
  */
 
 interface RealtimeAnalysis {
@@ -53,12 +54,35 @@ function formatPlan(questions: PlannedQuestion[], isHebrew: boolean): string {
     const idx = i + 1;
     const topic = q.topic?.trim() ?? "";
     const text = q.question?.trim() ?? "";
-    return isHebrew
-      ? `${idx}. [${topic}] ${text}`
-      : `${idx}. [${topic}] ${text}`;
+    return `${idx}. [${topic}] ${text}`;
   });
   return `${header}\n${lines.join("\n")}`;
 }
+
+const HE_ORDINALS_F = [
+  "הראשונה",
+  "השנייה",
+  "השלישית",
+  "הרביעית",
+  "החמישית",
+  "השישית",
+  "השביעית",
+  "השמינית",
+  "התשיעית",
+  "העשירית",
+];
+const EN_ORDINALS = [
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "fifth",
+  "sixth",
+  "seventh",
+  "eighth",
+  "ninth",
+  "tenth",
+];
 
 export function buildRealtimeInstructions({
   language,
@@ -90,6 +114,13 @@ export function buildRealtimeInstructions({
         "- אל תכריזי על עצמך כ־AI, ואל תזכירי שמות כלים בקול.",
       ].join("\n"),
     );
+    sections.push(
+      [
+        "הודעות מערכת:",
+        "לפעמים תגיע בשיחה הודעת טקסט (לא קול) שמתחילה ב־[הודעת מערכת]. זו לא דיבור של הסטודנט/ית אלא הוראה מהמערכת — פעלי לפיה מיד, אל תקריאי אותה בקול ואל תזכירי אותה.",
+        "ההודעות האפשריות: דילוג על שאלה (עברי הלאה בלי שיפוטיות), החלפת שאלה (שאלי שאלה אחרת על אותו חומר), ובקשת פרידה (אמרי פרידה מלאה).",
+      ].join("\n"),
+    );
     if (assignmentTitle) {
       sections.push(`שם המטלה: "${assignmentTitle}".`);
     }
@@ -110,6 +141,13 @@ export function buildRealtimeInstructions({
         "- Do NOT grade, score, or give correctness feedback. Do NOT supply content the student should be producing.",
         "- Keep a podcast cadence: natural speech, no bullet-list reading.",
         "- Do not announce yourself as an AI, and never say tool names out loud.",
+      ].join("\n"),
+    );
+    sections.push(
+      [
+        "System notes:",
+        "Occasionally a TEXT message (not speech) arrives that starts with [SYSTEM NOTE]. It is not the student speaking but an instruction from the system — act on it immediately, never read it aloud and never mention it.",
+        "Possible notes: skip a question (move on without judgement), swap a question (ask a different one on the same material), and a farewell request (give a full goodbye).",
       ].join("\n"),
     );
     if (assignmentTitle) {
@@ -158,39 +196,8 @@ export function buildRealtimeInstructions({
   const planBlock = formatPlan(questions, isHebrew);
   if (planBlock) sections.push(planBlock);
 
-  // Hebrew ordinal words for the planned-question count, e.g.
-  // questions=5 -> ["הראשונה","השנייה","השלישית","הרביעית","החמישית"].
-  // The model is instructed to use these exact words when announcing
-  // each new planned question. Static (rather than runtime-built)
-  // wording works better with realtime models — they latch onto the
-  // explicit list verbatim.
-  const HE_ORDINALS_F = [
-    "הראשונה",
-    "השנייה",
-    "השלישית",
-    "הרביעית",
-    "החמישית",
-    "השישית",
-    "השביעית",
-    "השמינית",
-    "התשיעית",
-    "העשירית",
-  ];
-  const EN_ORDINALS = [
-    "first",
-    "second",
-    "third",
-    "fourth",
-    "fifth",
-    "sixth",
-    "seventh",
-    "eighth",
-    "ninth",
-    "tenth",
-  ];
   const heOrdinalList = HE_ORDINALS_F.slice(0, totalQuestions).join(", ");
   const enOrdinalList = EN_ORDINALS.slice(0, totalQuestions).join(", ");
-
   const lastHeOrdinal = HE_ORDINALS_F[totalQuestions - 1] ?? "האחרונה";
   const lastEnOrdinal = EN_ORDINALS[totalQuestions - 1] ?? "final";
 
@@ -218,15 +225,18 @@ export function buildRealtimeInstructions({
         "4. ⚠️ אנטי־הזיה: התבססי אך ורק על מה שהסטודנט/ית אמר/ה בפועל בתמליל. אם התמליל ריק, רועש, חלקי, או נראה כמו רעש רקע / רוח / נשימה / מילה אקראית בלי הקשר — אסור להתייחס לתוכן שלא נאמר, אסור להמציא נושאים, אסור לסכם או לשבח טיעון שלא הופיע. במקום זה, בקשי בעדינות לחזור על מה שאמרו (\"לא בטוחה שתפסתי את זה — אפשר להגיד שוב?\" / \"היה לי קצת רעש ברקע — מה אמרת?\"). אל תתקדמי כאילו ענו.",
         "5. אם הסטודנט/ית אומר/ת \"אפשר לעבור לשאלה הבאה\" (או ניסוח דומה) — עברי מיד לשאלה הבאה ברשימה עם הכרזת המספר המתאים, בלי תירוצים ובלי לעצור.",
         "6. לעולם אל תגידי שיש \"בעיה טכנית\" / \"אין לי גישה לשאלה הבאה\" / \"לא מצליחה להמשיך\". יש לך את כל רשימת השאלות מעל, ואת ממשיכה לפיהן ברצף.",
-        `7. סיום: אחרי שכיסית את כל ${totalQuestions} השאלות המתוכננות (כולל שאלות המשך לפי הצורך) — תני סיום חם, רגוע ושלם בקול. הסיום חייב לכלול את שלושת החלקים הבאים, בסדר הזה:`,
+        `7. סיום — חשוב מאוד: אחרי התשובה לשאלה ${lastHeOrdinal} והאחרונה (כולל שאלת המשך אם הייתה צורך), הגיבי קודם במשפט אנושי קצר על מה שנאמר, ואז תני סיום חם, רגוע ושלם בקול. הסיום חייב לכלול את שלושת החלקים הבאים, בסדר הזה:`,
         "   א. משפט סיכום אחד חמים על מה שהסטודנט/ית הביא/ה לשיחה (לא ציון, רק הכרה אנושית).",
         "   ב. תודה מפורשת על ההשתתפות.",
         "   ג. משפט פרידה ברור עם איחול (לדוגמה: \"הראיון הסתיים כאן — תודה רבה לך, יום נעים והצלחה בהמשך\").",
-        "   ⚠️ קריטי: \`finish_interview\` סוגר את הראיון באופן מיידי. אם תקראי לכלי לפני שסיימת לדבר — הסטודנט/ית לא תשמע את הפרידה. לכן:",
+        "   ⚠️ קריטי: `finish_interview` סוגר את הראיון. אם תקראי לכלי לפני שסיימת לדבר — הסטודנט/ית לא תשמע את הפרידה. לכן:",
         "   • סיימי קודם את כל שלושת המשפטים בקול, עד המילה האחרונה.",
-        "   • רק אחרי שסיימת לדבר לחלוטין (השתיקה התחילה) — קראי לכלי `finish_interview` עם `reason: \"completed\"`.",
-        "   • אסור לקרוא לכלי באמצע משפט, אסור לקרוא לו בזמן שאת מדברת.",
+        "   • רק אחרי שסיימת לדבר לחלוטין — קראי לכלי `finish_interview` עם `reason: \"completed\"`.",
+        "   • אסור לקרוא לכלי באמצע משפט, ואסור לקרוא לו במקום הפרידה.",
+        "   • אם בכל זאת המערכת תבקש ממך פרידה (הוראת סיום) — אמרי את הפרידה המלאה בקול, בלי שאלות נוספות.",
         "8. סיום מוקדם: אם הסטודנט/ית מבקש/ת בעל־פה לסיים מוקדם, ענה/י בפרידה מלאה (שני משפטים: הכרה + איחול, לדוגמה \"בסדר גמור, נעצור כאן. תודה רבה על השיתוף, ושיהיה לך המשך יום נעים\"). חכי שתסיימי לדבר ורק אז קראי `finish_interview` עם `reason: \"ended_early\"`.",
+        "9. דילוג: כשמגיעה הודעת מערכת על דילוג על שאלה — אמרי משפט קצר ולא שיפוטי (\"בסדר גמור, נמשיך הלאה\") ועברי מיד לשאלה הבאה ברשימה עם הכרזת המספר. אם זו הייתה השאלה האחרונה — עברי ישירות לסיום לפי סעיף 7.",
+        "10. החלפה: כשמגיעה הודעת מערכת על החלפת שאלה — נסחי שאלה חדשה ושונה במהותה על אותו חלק בעבודה או נושא קרוב, באותו מספר שאלה (בלי הכרזת מספר חדש), בלי שיפוטיות.",
         "",
         "התחילי עכשיו את הפתיחה. אל תכריזי על עצמך כ־AI.",
       ].join("\n"),
@@ -255,15 +265,18 @@ export function buildRealtimeInstructions({
         "4. ⚠️ Anti-hallucination: ground every reply ONLY in what the student actually said in the transcript. If the transcript is empty, noisy, partial, or looks like background noise / wind / breath / a stray word with no context — do NOT reference content that wasn't said, do NOT invent topics, and do NOT summarize or praise an argument that never appeared. Instead, gently ask them to repeat (\"I'm not sure I caught that — could you say it again?\" / \"There was some background noise on my end — what did you say?\"). Do NOT advance as if it was answered.",
         "5. If the student says \"can we move to the next question\" (or equivalent), immediately move to the next planned question with its ordinal announcement, no excuses and no delay.",
         "6. Never claim there is a \"technical issue\" / \"can't access the next question\" / \"can't continue\". You already have the full plan above and must continue through it.",
-        `7. Closing: once you've covered all ${totalQuestions} planned questions (plus follow-ups as needed) — give a warm, unhurried, complete goodbye out loud. It MUST include the following three parts, in this order:`,
+        `7. Closing — CRITICAL: after the answer to the ${lastEnOrdinal} and final question (plus one follow-up if needed), first react with one short human sentence to what was said, then give a warm, unhurried, complete goodbye out loud. It MUST include the following three parts, in this order:`,
         "   a. One warm acknowledgement of what the student brought to the conversation (no grading — just human recognition).",
         "   b. An explicit thank-you for participating.",
         "   c. A clear farewell line with a well-wish (e.g. \"This is where we'll wrap — thank you so much, have a wonderful day and good luck with the rest of your work\").",
-        "   ⚠️ Critical: `finish_interview` closes the interview immediately. If you call it before you finish speaking, the student will NOT hear the farewell. Therefore:",
+        "   ⚠️ Critical: `finish_interview` closes the interview. If you call it before you finish speaking, the student will NOT hear the farewell. Therefore:",
         "   • Finish speaking all three parts out loud first, all the way to the last word.",
-        "   • Only AFTER you have fully stopped speaking (the silence has started) — call `finish_interview` with `reason: \"completed\"`.",
-        "   • Do NOT call the tool mid-sentence, and do NOT call it while you are still talking.",
+        "   • Only AFTER you have fully stopped speaking — call `finish_interview` with `reason: \"completed\"`.",
+        "   • Do NOT call the tool mid-sentence, and do NOT call it instead of the farewell.",
+        "   • If the system nevertheless asks you for a farewell (a closing instruction) — say the full goodbye out loud, with no further questions.",
         "8. Early end: if the student verbally asks to wrap up early, give a full two-sentence farewell (acknowledgement + well-wish, e.g. \"Sounds good — we can stop here. Thank you so much for sharing, and have a great rest of your day\"). Wait until you've finished speaking, THEN call `finish_interview` with `reason: \"ended_early\"`.",
+        "9. Skip: when a system note says the student skipped a question — say one short, non-judgemental sentence (\"No problem, let's move on\") and move immediately to the next planned question with its ordinal announcement. If it was the last question, go straight to the closing in item 7.",
+        "10. Swap: when a system note says the student wants a different question — ask a new, substantially different question about the same part of the submission or a closely related topic, in the same slot (no new ordinal announcement), without judgement.",
         "",
         "Begin the opening now. Do not announce yourself as an AI.",
       ].join("\n"),

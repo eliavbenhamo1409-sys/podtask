@@ -14,16 +14,22 @@
  * the host transcript to screen + persists both sides, (3) infers question
  * progress from the host's words (`host-text-heuristics.ts`), and (4) closes.
  *
- * CLOSE PATHS. All three funnel into `sessionRef.current.close()` and are
- * de-duplicated by `finalAnswerHandledRef`:
- *   a. `finish_interview` tool call → wait for the farewell audio to end
- *      (`onAssistantAudioEnd`), with a 10 s safety timer (600 ms grace when
- *      the host was already silent).
- *   b. Closing-phrase watchdog: a strong farewell sentence, gated by ≥1 student
- *      answer / repeated hits / ≥45 s elapsed, arms a 3 s timer.
- *   c. Final-answer fallback: once the last planned question was detected, the
- *      next substantive student utterance closes the session.
+ * CLOSE PATHS. Every path ends in `closeNow()` (idempotent), and none of them
+ * cuts the host off: the room guarantees a spoken farewell first.
+ *   a. `finish_interview` tool call → `beginFarewell("tool")`: if the host's
+ *      last utterance already was a goodbye, wait for its audio to end; if
+ *      not, ask the host for an explicit goodbye and close when it is spoken.
+ *   b. Closing-phrase detection on the host transcript: a strong "the
+ *      interview is over" line ends it at any time; a likely goodbye
+ *      (thanks + wish) only once the last planned question was answered.
+ *   c. Final-answer watchdog: after the last answer the host gets ~75 s to
+ *      wrap up on its own, then `beginFarewell("watchdog")` asks for it.
+ *   d. "End interview" button → `beginFarewell("student_end")`.
  * `close()` moves the FSM to `closing` → `onCompleted` → router.push(/complete).
+ *
+ * SKIP / SWAP. The student can skip a question (recorded as a system
+ * message, lowers the score) or swap one question once; both are sent to
+ * the host as bracketed system notes inside a user text message.
  *
  * PAUSE only pauses the on-screen timer; the live session keeps running.
  */
@@ -45,11 +51,18 @@ import {
   MicOffIcon,
   PauseIcon,
   PlayIcon,
+  RepeatIcon,
   SparkIcon,
   XIcon,
 } from "@/components/podtask/icons";
 import { MOCK_INTERVIEW_QUESTIONS } from "@/lib/student/mock-data";
 import { REALTIME_ADAPTER } from "@/lib/env";
+import {
+  buildFarewellInstructions,
+  buildReplaceDirective,
+  buildSkipDirective,
+  type FarewellReason,
+} from "@/lib/realtime/host-directives";
 import { useHeldTrue } from "@/lib/hooks/use-held-true";
 import { formatTime, isUuidLike } from "@/lib/utils";
 import {
@@ -62,9 +75,9 @@ import {
 } from "@/lib/realtime/openai-adapter";
 import { createRealtimeSession } from "@/lib/realtime/realtime-client";
 import {
+  closingStrength,
   detectExplicitQuestionNumber,
   detectPlannedQuestionIndex,
-  looksLikeInterviewClosing,
   looksLikePlannedQuestionTransition,
 } from "@/lib/realtime/host-text-heuristics";
 import type { StudentInterviewQuestion } from "@/lib/student/types";
@@ -77,6 +90,13 @@ import { LevelBar, Spinner, TranscriptBubble, makeHalo } from "./interview-parts
 // committing audio — this constant only drives the visual indicator.
 const SPEECH_LEVEL_THRESHOLD = 0.07;
 const INTERVIEW_QUESTION_COUNT = 5;
+
+// Closing timings (ms) — see the "closing" section inside the component.
+const FAREWELL_GRACE_MS = 1200; // let the last audio frames play out
+const FAREWELL_NO_AUDIO_MS = 8000; // a requested goodbye never started
+const FAREWELL_SAFETY_MS = 25_000; // hard ceiling on any goodbye
+const FINAL_ANSWER_WATCHDOG_MS = 75_000; // last answer given, host never wrapped up
+const FINAL_ANSWER_WATCHDOG_SHORT_MS = 45_000; // after skipping the last question
 
 interface TurnEntry {
   id: string;
@@ -142,41 +162,70 @@ export function InterviewRoomClient({
   const [hostLevel, setHostLevel] = useState(0);
   const [userLevel, setUserLevel] = useState(0);
   const [muted, setMuted] = useState(false);
-  // Fallback close logic: if the model forgets to call `finish_interview`
-  // after the final planned question, we still close automatically after the
-  // student provides an answer to that last question, so report generation
-  // is always triggered.
+  // Skip / swap controls (see confirmSkip / confirmReplace).
+  const [banner, setBanner] = useState<"skip" | "replace" | null>(null);
+  const [replaceUsed, setReplaceUsed] = useState(false);
+  // True from the moment the room decided to end until the FSM closes: the
+  // host is saying (or being asked to say) goodbye.
+  const [wrappingUp, setWrappingUp] = useState(false);
+
+  // Question-progress tracking. The host announces each planned question
+  // with an ordinal; we mirror that into `lastDetectedQuestionIndexRef` (and
+  // the FSM) so persisted messages bind to the right plan question and the
+  // skip / swap controls know which question is on the table.
   const askedQuestionIndexesRef = useRef<Set<number>>(new Set());
   const lastDetectedQuestionIndexRef = useRef(-1);
   const waitingForFinalAnswerRef = useRef(false);
+  // Set once the student answered (or skipped) the last planned question.
+  // From here a likely farewell from the host is enough to end, and the
+  // watchdog asks for a goodbye if the host never gives one.
+  const finalAnswerGivenRef = useRef(false);
+  const finalAnswerWatchdogRef = useRef<number | null>(null);
+  // Flipped exactly once, by closeNow(). Every close path checks it.
   const finalAnswerHandledRef = useRef(false);
-  // Belt-and-suspenders close logic: once the host emits a strong closing
-  // utterance (e.g. "הראיון הסתיים" / "the interview is over"), we arm a
-  // watchdog and close as soon as the host stops speaking, even if the
-  // model never calls `finish_interview` and the per-question fingerprinter
-  // missed the last planned question.
   const studentAnswerCountRef = useRef(0);
-  const closingHitsRef = useRef(0);
+  const lastAssistantTextRef = useRef("");
+  // pendingClose = "close as soon as the host falls silent";
+  // closingTimer = grace / safety timer for that pending close.
   const pendingCloseRef = useRef(false);
   const closingTimerRef = useRef<number | null>(null);
-  const elapsedRef = useRef(0);
-  // Tracks whether the host audio stream is currently playing. We need
-  // this so that `finish_interview` can wait for the farewell sentence to
-  // finish instead of cutting it off mid-word when the model calls the
-  // tool while it's still speaking.
+  // Browser-driven farewell bookkeeping (see beginFarewell).
+  const farewellRef = useRef({
+    started: false,
+    sendWhenSilent: false,
+    pendingReason: "tool" as FarewellReason,
+    sent: false,
+    audioStarted: false,
+    timers: [] as number[],
+  });
+  // Whether host audio is currently playing, so every close path can wait
+  // for the goodbye to finish instead of cutting it off.
   const hostSpeakingRef = useRef(false);
 
   useEffect(() => {
     askedQuestionIndexesRef.current = new Set();
     lastDetectedQuestionIndexRef.current = -1;
     waitingForFinalAnswerRef.current = false;
+    finalAnswerGivenRef.current = false;
     finalAnswerHandledRef.current = false;
     studentAnswerCountRef.current = 0;
-    closingHitsRef.current = 0;
+    lastAssistantTextRef.current = "";
     pendingCloseRef.current = false;
+    farewellRef.current = {
+      started: false,
+      sendWhenSilent: false,
+      pendingReason: "tool",
+      sent: false,
+      audioStarted: false,
+      timers: [],
+    };
     if (closingTimerRef.current !== null) {
       window.clearTimeout(closingTimerRef.current);
       closingTimerRef.current = null;
+    }
+    if (finalAnswerWatchdogRef.current !== null) {
+      window.clearTimeout(finalAnswerWatchdogRef.current);
+      finalAnswerWatchdogRef.current = null;
     }
   }, [interviewId]);
 
@@ -210,25 +259,176 @@ export function InterviewRoomClient({
     [],
   );
 
-  // ---- Section: auto-close watchdog ----
+  // ---- Section: closing (every path ends in closeNow) ----
 
-  // Arms the closing watchdog. Idempotent — repeated calls don't re-stack
-  // timers. Uses a 3 s ceiling because the host's audio_end fires within
-  // ~1.5 s of the last word in practice; the timer is just a safety net
-  // for the rare case where audio_end is dropped/delayed.
-  const scheduleAutoClose = useCallback(() => {
-    if (finalAnswerHandledRef.current) return;
-    if (pendingCloseRef.current) return;
-    pendingCloseRef.current = true;
+  const localeRef = useRef(locale);
+  useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
+
+  const clearClosingTimers = useCallback(() => {
     if (closingTimerRef.current !== null) {
       window.clearTimeout(closingTimerRef.current);
-    }
-    closingTimerRef.current = window.setTimeout(() => {
       closingTimerRef.current = null;
+    }
+    if (finalAnswerWatchdogRef.current !== null) {
+      window.clearTimeout(finalAnswerWatchdogRef.current);
+      finalAnswerWatchdogRef.current = null;
+    }
+    for (const id of farewellRef.current.timers) window.clearTimeout(id);
+    farewellRef.current.timers = [];
+  }, []);
+
+  // The single exit: idempotent, clears every timer, moves the FSM to
+  // `closing` (which redirects to /complete and triggers scoring).
+  const closeNow = useCallback(() => {
+    if (finalAnswerHandledRef.current) return;
+    finalAnswerHandledRef.current = true;
+    clearClosingTimers();
+    sessionRef.current.close();
+  }, [clearClosingTimers]);
+
+  // Close once the host has finished its current utterance. If audio is
+  // playing, `onAssistantAudioEnd` re-enters here with the host silent; a
+  // safety timer guarantees we never strand the student if that event is
+  // lost. When the host is already silent a short grace timer closes.
+  const closeAfterHostSilent = useCallback(
+    (graceMs: number) => {
       if (finalAnswerHandledRef.current) return;
-      finalAnswerHandledRef.current = true;
-      sessionRef.current.close();
-    }, 3000);
+      pendingCloseRef.current = true;
+      if (closingTimerRef.current !== null) {
+        window.clearTimeout(closingTimerRef.current);
+      }
+      closingTimerRef.current = window.setTimeout(
+        closeNow,
+        hostSpeakingRef.current ? FAREWELL_SAFETY_MS : graceMs,
+      );
+    },
+    [closeNow],
+  );
+
+  // Ask the host for an explicit, warm goodbye; the close happens when it
+  // has been spoken (onAssistantAudioEnd). Waits for the server to be idle
+  // first — a `response.create` sent during an active response is dropped.
+  const sendFarewellResponse = useCallback(
+    (reason: FarewellReason) => {
+      const adapter = adapterRef.current;
+      if (!adapter || farewellRef.current.sent) return;
+      farewellRef.current.sent = true;
+      const instructions = buildFarewellInstructions(localeRef.current, reason);
+      const startedAt = Date.now();
+      const trySend = () => {
+        if (finalAnswerHandledRef.current || adapterRef.current !== adapter) return;
+        if (adapter.isResponseActive() && Date.now() - startedAt < 3000) {
+          farewellRef.current.timers.push(window.setTimeout(trySend, 120));
+          return;
+        }
+        try {
+          adapter.sendEvent({
+            type: "response.create",
+            response: { instructions },
+          });
+        } catch {
+          closeNow();
+          return;
+        }
+        // No audio within a few seconds → the model isn't going to speak.
+        farewellRef.current.timers.push(
+          window.setTimeout(() => {
+            if (!farewellRef.current.audioStarted) closeNow();
+          }, FAREWELL_NO_AUDIO_MS),
+        );
+        // Hard ceiling on the goodbye itself.
+        farewellRef.current.timers.push(
+          window.setTimeout(closeNow, FAREWELL_SAFETY_MS),
+        );
+      };
+      trySend();
+    },
+    [closeNow],
+  );
+
+  // Entry point for every "the interview is over" decision in live mode:
+  //   tool         — the model called finish_interview
+  //   watchdog     — last answer given long ago, host never wrapped up
+  //   student_end  — the student pressed "end interview"
+  //   skipped_last — the student skipped the final question
+  // If the host already said goodbye on its own we only wait for the audio
+  // to finish; otherwise we ask it for a proper farewell first.
+  const beginFarewell = useCallback(
+    (reason: FarewellReason) => {
+      if (farewellRef.current.started || finalAnswerHandledRef.current) return;
+      farewellRef.current.started = true;
+      setWrappingUp(true);
+      setBanner(null);
+      const adapter = adapterRef.current;
+      if (!adapter) {
+        closeNow();
+        return;
+      }
+      // Don't let the student's mic interrupt the goodbye (server VAD would
+      // cancel the response and auto-create a new one).
+      adapter.setMicEnabled(false);
+      const strength = closingStrength(lastAssistantTextRef.current, localeRef.current);
+      const hostAlreadySaidGoodbye =
+        reason === "tool" && (strength === "likely" || strength === "strong");
+      if (hostAlreadySaidGoodbye) {
+        closeAfterHostSilent(FAREWELL_GRACE_MS);
+        return;
+      }
+      if (hostSpeakingRef.current) {
+        // Let the current sentence finish; onAssistantAudioEnd sends it.
+        farewellRef.current.sendWhenSilent = true;
+        farewellRef.current.pendingReason = reason;
+        farewellRef.current.timers.push(
+          window.setTimeout(() => {
+            if (farewellRef.current.sendWhenSilent) {
+              farewellRef.current.sendWhenSilent = false;
+              sendFarewellResponse(reason);
+            }
+          }, FAREWELL_SAFETY_MS),
+        );
+        return;
+      }
+      sendFarewellResponse(reason);
+    },
+    [closeAfterHostSilent, closeNow, sendFarewellResponse],
+  );
+
+  // After the last answer the host gets a while to wrap up by itself; if it
+  // never does, we ask for the goodbye instead of cutting the session.
+  const armFinalAnswerWatchdog = useCallback(
+    (delayMs: number) => {
+      if (finalAnswerWatchdogRef.current !== null) return;
+      finalAnswerWatchdogRef.current = window.setTimeout(() => {
+        finalAnswerWatchdogRef.current = null;
+        beginFarewell("watchdog");
+      }, delayMs);
+    },
+    [beginFarewell],
+  );
+
+  // Inject text as if the student had typed it (skip / swap notes), once
+  // the server is idle. Cancels whatever the host is saying first so the
+  // reaction is immediate.
+  const injectUserText = useCallback((text: string) => {
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+    adapter.cancelActiveResponse();
+    const startedAt = Date.now();
+    const trySend = () => {
+      if (adapterRef.current !== adapter) return;
+      if (adapter.isResponseActive() && Date.now() - startedAt < 3000) {
+        window.setTimeout(trySend, 120);
+        return;
+      }
+      try {
+        adapter.sendUserText(text);
+      } catch {
+        /* data channel closed; nothing to do */
+      }
+    };
+    trySend();
   }, []);
 
   const finalizeTranscript = useCallback(
@@ -318,19 +518,24 @@ export function InterviewRoomClient({
         // Shared handler for both "final student text" events the adapter
         // emits (conversation item done + input transcription completed).
         // Both events still fire exactly as before; only the body is shared.
+        // Which plan question the conversation is on right now (null during
+        // the greeting, before the first ordinal announcement).
+        const currentPlanQuestionId = (): string | null => {
+          const i = lastDetectedQuestionIndexRef.current;
+          return i >= 0 ? (cappedQuestions[i]?.id ?? null) : null;
+        };
+
         const handleStudentUtterance = (text: string) => {
           if (!text) return;
-          sessionRef.current.persistStudentMessage(text);
-          if (text.trim().length > 2) {
-            studentAnswerCountRef.current += 1;
-          }
-          if (
-            waitingForFinalAnswerRef.current &&
-            !finalAnswerHandledRef.current &&
-            text.trim().length > 2
-          ) {
-            finalAnswerHandledRef.current = true;
-            sessionRef.current.close();
+          sessionRef.current.persistStudentMessage(text, currentPlanQuestionId());
+          if (text.trim().length <= 2) return;
+          studentAnswerCountRef.current += 1;
+          if (waitingForFinalAnswerRef.current && !finalAnswerGivenRef.current) {
+            // The last planned question has been answered. Do NOT close
+            // here — the host still has to react and say goodbye. The
+            // watchdog asks for the farewell if the model never wraps up.
+            finalAnswerGivenRef.current = true;
+            armFinalAnswerWatchdog(FINAL_ANSWER_WATCHDOG_MS);
           }
         };
 
@@ -363,21 +568,27 @@ export function InterviewRoomClient({
           },
           onAssistantAudioStart: () => {
             hostSpeakingRef.current = true;
+            if (farewellRef.current.sent) farewellRef.current.audioStarted = true;
             sessionRef.current.aiStartedSpeaking();
           },
           onAssistantAudioEnd: () => {
             hostSpeakingRef.current = false;
             sessionRef.current.aiFinishedSpeaking();
-            // If a closing line was detected during this turn, close as
-            // soon as the host actually falls silent rather than waiting
-            // the full 3 s watchdog.
+            const fw = farewellRef.current;
+            // The host finished what it was saying; now ask for the goodbye.
+            if (fw.sendWhenSilent && !fw.sent) {
+              fw.sendWhenSilent = false;
+              sendFarewellResponse(fw.pendingReason);
+              return;
+            }
+            // The goodbye we asked for has been spoken.
+            if (fw.sent && fw.audioStarted) {
+              closeAfterHostSilent(FAREWELL_GRACE_MS);
+              return;
+            }
+            // The host said goodbye on its own and has now fallen silent.
             if (pendingCloseRef.current && !finalAnswerHandledRef.current) {
-              finalAnswerHandledRef.current = true;
-              if (closingTimerRef.current !== null) {
-                window.clearTimeout(closingTimerRef.current);
-                closingTimerRef.current = null;
-              }
-              sessionRef.current.close();
+              closeAfterHostSilent(FAREWELL_GRACE_MS);
             }
           },
           onUserSpeechStart: () => {
@@ -387,79 +598,75 @@ export function InterviewRoomClient({
             sessionRef.current.finishRecording(undefined, { persist: false });
           },
           onAssistantMessageDone: (text) => {
-            if (text) {
-              // Defensive: if `response.audio_transcript.done` didn't
-              // fire (older models / partial event coverage), the host
-              // text still lands here via `conversation.item.done`. The
-              // dedupe inside finalizeTranscript handles the common
-              // case where both events fire with the same text.
-              finalizeTranscript(text);
-              sessionRef.current.persistAssistantMessage(text);
-              const total = cappedQuestions.length;
-              // Priority order:
-              //  1. Explicit ordinal/numeric announcement from the host
-              //     ("אנחנו בשאלה השלישית" / "We're on the fifth question").
-              //     This is the contract we now ask the model to follow,
-              //     so when it fires it's very high confidence.
-              //  2. Fuzzy text overlap with the planned question wording.
-              //  3. "Next question" linguistic cue + monotonic increment.
-              const explicitIdx = detectExplicitQuestionNumber(text, locale);
-              let resolvedIdx = explicitIdx;
-              if (resolvedIdx < 0) {
-                resolvedIdx = detectPlannedQuestionIndex(text, cappedQuestions);
+            if (!text) return;
+            const loc = localeRef.current;
+            lastAssistantTextRef.current = text;
+            // Defensive: if `response.audio_transcript.done` didn't fire
+            // (older models / partial event coverage), the host text still
+            // lands here via `conversation.item.done`. The dedupe inside
+            // finalizeTranscript handles the common case where both events
+            // fire with the same text.
+            finalizeTranscript(text);
+            const total = cappedQuestions.length;
+            // Priority order:
+            //  1. Explicit ordinal/numeric announcement from the host
+            //     ("אנחנו בשאלה השלישית" / "We're on the fifth question").
+            //     This is the contract we ask the model to follow, so when
+            //     it fires it's very high confidence.
+            //  2. Fuzzy text overlap with the planned question wording.
+            //  3. "Next question" linguistic cue + monotonic increment.
+            const explicitIdx = detectExplicitQuestionNumber(text, loc);
+            let resolvedIdx = explicitIdx;
+            if (resolvedIdx < 0) {
+              resolvedIdx = detectPlannedQuestionIndex(text, cappedQuestions);
+            }
+            if (
+              resolvedIdx < 0 &&
+              total > 0 &&
+              looksLikePlannedQuestionTransition(text, loc) &&
+              lastDetectedQuestionIndexRef.current < total - 1
+            ) {
+              // Fallback progression for strong "next question" transitions
+              // when the model paraphrases too far from the original text.
+              resolvedIdx = lastDetectedQuestionIndexRef.current + 1;
+            }
+            if (resolvedIdx >= 0 && total > 0) {
+              const clampedIdx = Math.max(0, Math.min(total - 1, resolvedIdx));
+              askedQuestionIndexesRef.current.add(clampedIdx);
+              if (clampedIdx > lastDetectedQuestionIndexRef.current) {
+                lastDetectedQuestionIndexRef.current = clampedIdx;
+                // Keep the FSM in step so the on-screen counter and the
+                // skip / swap controls follow the host.
+                sessionRef.current.setQuestionIndex(clampedIdx);
               }
               if (
-                resolvedIdx < 0 &&
-                total > 0 &&
-                looksLikePlannedQuestionTransition(text, locale) &&
-                lastDetectedQuestionIndexRef.current < total - 1
+                clampedIdx >= total - 1 ||
+                askedQuestionIndexesRef.current.size >= total
               ) {
-                // Fallback progression for strong "next question" transitions
-                // when the model paraphrases too far from the original text.
-                resolvedIdx = lastDetectedQuestionIndexRef.current + 1;
+                waitingForFinalAnswerRef.current = true;
               }
-              if (resolvedIdx >= 0 && total > 0) {
-                const clampedIdx = Math.max(0, Math.min(total - 1, resolvedIdx));
-                askedQuestionIndexesRef.current.add(clampedIdx);
-                lastDetectedQuestionIndexRef.current = Math.max(
-                  lastDetectedQuestionIndexRef.current,
-                  clampedIdx,
-                );
-                if (
-                  clampedIdx >= total - 1 ||
-                  askedQuestionIndexesRef.current.size >= total
-                ) {
-                  waitingForFinalAnswerRef.current = true;
-                }
-              }
-              // Belt-and-suspenders safety net for the case where the
-              // model emits a clear closing sentence but never calls the
-              // `finish_interview` tool. The previous version of this
-              // gate also required `askedQuestionIndexesRef` to contain
-              // the last planned question, which fails whenever the
-              // fuzzy fingerprinter misses an aggressive paraphrase —
-              // and with that gate failing, the page sits stuck on the
-              // live screen even though the host clearly said goodbye.
-              //
-              // We now arm the close on any *strong* closing utterance,
-              // provided one of these confidence signals holds:
-              //   - At least one student answer has already been
-              //     committed (so it's not a premature greeting).
-              //   - We've seen the closing pattern more than once.
-              //   - Enough wall-clock time has elapsed (≥ 45 s) that
-              //     this is almost certainly the real ending.
-              if (
-                !finalAnswerHandledRef.current &&
-                looksLikeInterviewClosing(text, locale)
-              ) {
-                closingHitsRef.current += 1;
-                const meaningfulConversation =
-                  studentAnswerCountRef.current >= 1;
-                const repeatedClosing = closingHitsRef.current >= 2;
-                const enoughTime = elapsedRef.current >= 45;
-                if (meaningfulConversation || repeatedClosing || enoughTime) {
-                  scheduleAutoClose();
-                }
+            }
+            // Persist AFTER resolving the index so the announcement of
+            // question N is bound to question N, not N-1.
+            sessionRef.current.persistAssistantMessage(
+              text,
+              currentPlanQuestionId(),
+            );
+            // Farewell detection. A strong "the interview is over" line ends
+            // the session at any time (after at least one answer, so a
+            // greeting can't trip it); a likely goodbye (thanks + wish)
+            // only once the last planned question has been answered —
+            // the host also thanks the student between questions.
+            if (!finalAnswerHandledRef.current && !farewellRef.current.started) {
+              const strength = closingStrength(text, loc);
+              const strong = strength === "strong" && studentAnswerCountRef.current >= 1;
+              const likely = strength === "likely" && finalAnswerGivenRef.current;
+              if (strong || likely) {
+                farewellRef.current.started = true;
+                setWrappingUp(true);
+                setBanner(null);
+                adapterRef.current?.setMicEnabled(false);
+                closeAfterHostSilent(FAREWELL_GRACE_MS);
               }
             }
           },
@@ -476,9 +683,8 @@ export function InterviewRoomClient({
           onToolCall: (call: RealtimeToolCall) => {
             if (call.name === "finish_interview") {
               try {
-                // createResponse:false — the host already said its
-                // goodbye line just before calling the tool; we don't
-                // want it to spin up another response after we close.
+                // createResponse:false — we decide ourselves whether the
+                // host still owes the student a goodbye (beginFarewell).
                 adapter.respondToTool(
                   call.callId,
                   { ok: true },
@@ -487,44 +693,7 @@ export function InterviewRoomClient({
               } catch {
                 /* noop */
               }
-              // Wait for the farewell audio to finish before closing.
-              // The model may call `finish_interview` while it is still
-              // mid-sentence on the goodbye line — closing the session
-              // immediately would cut the audio off mid-word and the
-              // student would never hear the farewell.
-              //
-              // Strategy:
-              //   - If the host is still speaking, mark the close as
-              //     pending. `onAssistantAudioEnd` will then trigger the
-              //     real close as soon as the host falls silent.
-              //   - If the host is already silent (i.e. it finished the
-              //     farewell before emitting the tool call), close after
-              //     a short grace so the audio element flushes any
-              //     buffered samples.
-              //   - In either case, arm a safety timer (10 s) so a
-              //     dropped `audio_end` event never strands the user on
-              //     the live screen.
-              if (finalAnswerHandledRef.current) return;
-              if (closingTimerRef.current !== null) {
-                window.clearTimeout(closingTimerRef.current);
-                closingTimerRef.current = null;
-              }
-              pendingCloseRef.current = true;
-              if (hostSpeakingRef.current) {
-                closingTimerRef.current = window.setTimeout(() => {
-                  closingTimerRef.current = null;
-                  if (finalAnswerHandledRef.current) return;
-                  finalAnswerHandledRef.current = true;
-                  sessionRef.current.close();
-                }, 10_000);
-              } else {
-                closingTimerRef.current = window.setTimeout(() => {
-                  closingTimerRef.current = null;
-                  if (finalAnswerHandledRef.current) return;
-                  finalAnswerHandledRef.current = true;
-                  sessionRef.current.close();
-                }, 600);
-              }
+              beginFarewell("tool");
             } else if (call.name === "ask_question_at_index") {
               try {
                 // Legacy compatibility no-op. We do NOT drive question
@@ -590,19 +759,19 @@ export function InterviewRoomClient({
       adapterRef.current?.disconnect();
       adapterRef.current = null;
       micStream?.getTracks().forEach((tk) => tk.stop());
-      if (closingTimerRef.current !== null) {
-        window.clearTimeout(closingTimerRef.current);
-        closingTimerRef.current = null;
-      }
+      clearClosingTimers();
     };
   }, [
     adapterMode,
     interviewId,
     appendTranscriptDelta,
     finalizeTranscript,
-    scheduleAutoClose,
+    beginFarewell,
+    sendFarewellResponse,
+    closeAfterHostSilent,
+    armFinalAnswerWatchdog,
+    clearClosingTimers,
     cappedQuestions,
-    locale,
   ]);
 
   // ---- Section: timers + keyboard shortcuts ----
@@ -619,23 +788,17 @@ export function InterviewRoomClient({
     return () => clearInterval(tid);
   }, [paused, closingOrDone]);
 
-  useEffect(() => {
-    elapsedRef.current = elapsed;
-  }, [elapsed]);
-
-  // Once the FSM has actually transitioned out of the "live" phase, the
-  // watchdog has nothing left to do. Keep this effect cheap; it just frees
-  // the timer so an unmount doesn't fire a stale close().
+  // Once the FSM has transitioned out of the live phase, no timer has
+  // anything left to do; free them so an unmount can't fire a stale close().
   useEffect(() => {
     if (session.state !== "closing" && session.state !== "completed") return;
-    if (closingTimerRef.current !== null) {
-      window.clearTimeout(closingTimerRef.current);
-      closingTimerRef.current = null;
-    }
-  }, [session.state]);
+    clearClosingTimers();
+  }, [session.state, clearClosingTimers]);
 
   // Reads the adapter through a ref at call time, so `[]` deps are correct.
+  // Ignored during the farewell so the goodbye can't be interrupted.
   const toggleMute = useCallback(() => {
+    if (farewellRef.current.started) return;
     const adapter = adapterRef.current;
     if (!adapter) return;
     const nextEnabled = !adapter.isMicEnabled();
@@ -686,7 +849,72 @@ export function InterviewRoomClient({
   const hostGlow = useHeldTrue(hostActive, 320);
 
   function handleEndEarly() {
+    if (adapterMode === "openai") {
+      beginFarewell("student_end");
+      return;
+    }
     session.close();
+  }
+
+  // 1-based number of the question currently on the table (skip / swap UI).
+  const currentQuestionNumber = Math.min(
+    cappedQuestions.length,
+    session.questionIndex + 1,
+  );
+  const controlsLocked =
+    wrappingUp ||
+    closingOrDone ||
+    session.state === "idle" ||
+    session.state === "connecting";
+
+  // Skip: recorded as a system message (the report lowers the score for it)
+  // and the host is told to move on without judgement.
+  function confirmSkip() {
+    setBanner(null);
+    if (controlsLocked) return;
+    const idx = Math.max(0, session.questionIndex);
+    const total = cappedQuestions.length;
+    const isLast = idx >= total - 1;
+    sessionRef.current.persistSystemMessage(
+      `skipped_question:${idx + 1}`,
+      cappedQuestions[idx]?.id ?? null,
+    );
+    askedQuestionIndexesRef.current.add(idx);
+    if (adapterMode === "openai") {
+      injectUserText(buildSkipDirective(locale, idx + 1, total, isLast));
+      if (isLast) {
+        waitingForFinalAnswerRef.current = true;
+        finalAnswerGivenRef.current = true;
+        armFinalAnswerWatchdog(FINAL_ANSWER_WATCHDOG_SHORT_MS);
+      } else {
+        // Pre-advance; the host's own ordinal announcement (if any) only
+        // ever moves the index forward, never back.
+        lastDetectedQuestionIndexRef.current = idx + 1;
+        session.setQuestionIndex(idx + 1);
+      }
+      return;
+    }
+    // Mock driver.
+    if (isLast) session.close();
+    else session.setQuestionIndex(idx + 1);
+  }
+
+  // Swap (once): the host asks a different question in the same slot; no
+  // effect on the score.
+  function confirmReplace() {
+    setBanner(null);
+    if (controlsLocked || replaceUsed) return;
+    setReplaceUsed(true);
+    const idx = Math.max(0, session.questionIndex);
+    sessionRef.current.persistSystemMessage(
+      `replaced_question:${idx + 1}`,
+      cappedQuestions[idx]?.id ?? null,
+    );
+    if (adapterMode === "openai") {
+      injectUserText(buildReplaceDirective(locale, idx + 1));
+      return;
+    }
+    session.setQuestionIndex(idx);
   }
 
   // Mock-mode primary CTA still drives the FSM. Live mode uses the
@@ -1084,6 +1312,85 @@ export function InterviewRoomClient({
             padding: "20px 32px 28px",
           }}
         >
+          {/* SKIP / SWAP confirmation banner — always warns before acting. */}
+          <AnimatePresence>
+            {banner ? (
+              <motion.div
+                key={banner}
+                role="alertdialog"
+                aria-live="assertive"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                transition={{ duration: 0.2 }}
+                className="card"
+                style={{
+                  marginBottom: 12,
+                  padding: "16px 20px",
+                  borderRadius: 20,
+                  background:
+                    banner === "skip"
+                      ? "rgba(255,241,245,0.97)"
+                      : "rgba(240,249,255,0.97)",
+                  border: `1px solid ${
+                    banner === "skip"
+                      ? "rgba(244,63,94,0.35)"
+                      : "rgba(56,189,248,0.4)"
+                  }`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15 }}>
+                    {t(
+                      banner === "skip"
+                        ? "interview.skipBannerTitle"
+                        : "interview.replaceBannerTitle",
+                      { n: currentQuestionNumber },
+                    )}
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
+                    {t(
+                      banner === "skip"
+                        ? "interview.skipBannerBody"
+                        : "interview.replaceBannerBody",
+                    )}
+                  </div>
+                </div>
+                <div className="row" style={{ gap: 8, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: "10px 14px", fontSize: 13 }}
+                    onClick={() => setBanner(null)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{
+                      padding: "10px 14px",
+                      fontSize: 13,
+                      ...(banner === "skip"
+                        ? { background: "linear-gradient(135deg,#FDA4AF,#F43F5E)" }
+                        : {}),
+                    }}
+                    onClick={banner === "skip" ? confirmSkip : confirmReplace}
+                  >
+                    {t(
+                      banner === "skip"
+                        ? "interview.skipConfirm"
+                        : "interview.replaceConfirm",
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           <div
             className="card"
             style={{
@@ -1113,10 +1420,45 @@ export function InterviewRoomClient({
                   </>
                 )}
               </button>
+              {!wrappingUp && !closingOrDone ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: "12px 16px", fontSize: 13 }}
+                    onClick={() => setBanner("skip")}
+                    disabled={controlsLocked}
+                  >
+                    <span className="icon-flip">
+                      <ArrowIcon />
+                    </span>{" "}
+                    {t("interview.skipQuestion")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: "12px 16px", fontSize: 13 }}
+                    onClick={() => setBanner("replace")}
+                    disabled={controlsLocked || replaceUsed}
+                  >
+                    <RepeatIcon size={14} />{" "}
+                    {replaceUsed
+                      ? t("interview.replaceUsed")
+                      : t("interview.replaceQuestion")}
+                  </button>
+                </>
+              ) : null}
             </div>
 
             <div className="row" style={{ gap: 16, alignItems: "center" }}>
-              {adapterMode === "openai" ? (
+              {adapterMode === "openai" && wrappingUp ? (
+                <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                  <Spinner />
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>
+                    {t("interview.farewell")}
+                  </div>
+                </div>
+              ) : adapterMode === "openai" ? (
                 <>
                   <div
                     className="text-muted"

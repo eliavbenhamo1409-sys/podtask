@@ -147,52 +147,45 @@ function tokenOverlap(a: string, b: string): number {
   return common / bTokens.size;
 }
 
-// Phrase set is intentionally broad — false positives here are cheap (the
-// gates in the caller require additional evidence before closing) while
-// false negatives strand the student on the live screen forever.
-const HE_CLOSING_SIGNALS = [
-  "הראיון הסתיים",
-  "הראיון נגמר",
-  "סיימנו את הראיון",
-  "סיימנו",
-  "נסיים כאן",
-  "נסיים את הראיון",
-  "נעצור כאן",
-  "תודה רבה",
-  "תודה שהשתתפת",
-  "תודה שהשתתפתם",
-  "להתראות",
-  "יום טוב",
-  "המשך יום טוב",
-  "המשך יום נעים",
-  "בהצלחה בהמשך",
-  "בהצלחה",
-];
-const EN_CLOSING_SIGNALS = [
-  "the interview is over",
-  "the interview is done",
-  "the interview has ended",
-  "we'll wrap up here",
-  "let's wrap up",
-  "let's stop here",
-  "we'll stop here",
-  "thank you for joining",
-  "thanks for joining",
-  "thanks for sharing",
-  "goodbye",
-  "have a good day",
-  "have a great day",
-  "good luck",
-  "we're done",
-  "we are done",
-];
+// Closing phrases are grouped by what they express. A real farewell (the
+// prompt asks for acknowledgement + thanks + goodbye) hits two or more
+// groups; a single "תודה רבה" between questions hits only one. The caller
+// decides what each strength means in context (see closingStrength).
+const CLOSING_GROUPS: Record<"he" | "en", { strong: string[]; thanks: string[]; farewell: string[]; wrap: string[] }> = {
+  he: {
+    strong: ["הראיון הסתיים", "הראיון נגמר", "סיימנו את הראיון", "נסיים את הראיון", "זה היה הראיון"],
+    thanks: ["תודה רבה", "תודה שהשתתפת", "תודה שהשתתפתם", "תודה על השיחה", "תודה על ההשתתפות", "תודה על השיתוף"],
+    farewell: ["להתראות", "יום טוב", "יום נעים", "המשך יום", "בהצלחה", "שיהיה לך", "שיהיה לכם", "כל טוב"],
+    wrap: ["סיימנו", "נסיים כאן", "נעצור כאן", "נעצור פה", "נסיים פה"],
+  },
+  en: {
+    strong: ["the interview is over", "the interview is done", "the interview has ended", "that was the interview", "this concludes"],
+    thanks: ["thank you for joining", "thanks for joining", "thanks for sharing", "thank you for sharing", "thank you so much", "thanks so much", "thank you for your time"],
+    farewell: ["goodbye", "have a good day", "have a great day", "have a wonderful day", "good luck", "take care", "all the best"],
+    wrap: ["we'll wrap up", "let's wrap up", "let's stop here", "we'll stop here", "we're done", "we are done", "this is where we'll wrap"],
+  },
+};
 
-/** True when the host text contains a farewell / wrap-up phrase. */
-export function looksLikeInterviewClosing(text: string, locale: string): boolean {
+export type ClosingStrength = "none" | "weak" | "likely" | "strong";
+
+/**
+ * How strongly the host text reads as the end of the interview:
+ *   strong  — an explicit "the interview is over" phrase
+ *   likely  — at least two of {thanks, farewell wish, wrap-up} (a real goodbye)
+ *   weak    — just one of them (e.g. "תודה רבה" between questions)
+ *   none    — nothing
+ */
+export function closingStrength(text: string, locale: string): ClosingStrength {
   const normalized = normalizeForMatch(text);
-  if (!normalized) return false;
-  const signals = locale === "he" ? HE_CLOSING_SIGNALS : EN_CLOSING_SIGNALS;
-  return signals.some((sig) => normalized.includes(normalizeForMatch(sig)));
+  if (!normalized) return "none";
+  const groups = CLOSING_GROUPS[locale === "he" ? "he" : "en"];
+  const hit = (list: string[]) =>
+    list.some((sig) => normalized.includes(normalizeForMatch(sig)));
+  if (hit(groups.strong)) return "strong";
+  const count = [groups.thanks, groups.farewell, groups.wrap].filter(hit).length;
+  if (count >= 2) return "likely";
+  if (count === 1) return "weak";
+  return "none";
 }
 
 const HE_TRANSITION_SIGNALS = [

@@ -298,6 +298,16 @@ export class OpenAIRealtimeAdapter {
     return this.localStream?.getAudioTracks()[0]?.enabled ?? false;
   }
 
+  /**
+   * True between `response.created` and `response.done`. A `response.create`
+   * sent while this is true is rejected by the server (and the adapter
+   * suppresses that error), so callers that must get a response wait for
+   * this to clear first.
+   */
+  isResponseActive(): boolean {
+    return this.responseActive;
+  }
+
   disconnect(): void {
     if (this.rafHandle !== null) {
       cancelAnimationFrame(this.rafHandle);

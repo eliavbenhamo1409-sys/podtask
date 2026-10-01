@@ -28,22 +28,23 @@ Use the Supabase MCP tool `deploy_edge_function` with the function's
 `index.ts` **and every `_shared/*.ts` file it imports** (each deploy snapshots
 its own copy of the shared files). Never redeploy for comment-only changes.
 
-### ⚠ The repo is NOT the source of truth for every function (audit 2026-10-01)
+### Deployed versions (keep this table current)
 
 | Slug | Deployed version | Matches repo? |
 | --- | --- | --- |
 | prepare-submission | v5 | yes |
-| create-realtime-session | v12 | **no** — deployed prompt text and `finish_interview` description differ |
+| create-realtime-session | v13 (2026-10-01) | yes — repo prompt + system-notes / skip / swap protocol |
 | save-interview-message | v4 | yes |
 | evaluate-answer | v3 | no (dormant) |
 | complete-interview | v4 | yes |
-| generate-report | v5 | **no** — deployed has two extra scoring-prompt lines |
+| generate-report | v6 (2026-10-01) | yes — grouped transcript + skip penalty / swap handling |
 | create-guest-session | v1 | yes |
 
-Before changing `create-realtime-session` or `generate-report`: pull the live
-source with the MCP tool `get_edge_function`, diff it against the repo, and
-either commit the live text as the new baseline or deliberately redeploy the
-repo version. Record the decision here.
+History: on 2026-10-01 the deployed v12 of `create-realtime-session` and v5 of
+`generate-report` had drifted from the repo (condensed prompt, two extra scoring
+lines). Both were reconciled by deploying the repo versions (with the new
+features) as v13 / v6. Before any future change, pull the live source with the
+MCP tool `get_edge_function` and diff it against the repo first.
 
 ## Known defects (see `ARCHITECTURE.md` §7)
 
