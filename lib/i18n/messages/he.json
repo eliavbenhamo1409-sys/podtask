@@ -313,7 +313,8 @@
     "scoringSlow": "זה לוקח קצת יותר זמן מהרגיל. אפשר להישאר בעמוד — הציון יופיע כאן ברגע שיהיה מוכן.",
     "refresh": "רענון",
     "print": "הדפסת אישור",
-    "questionsUnknown": "—"
+    "questionsUnknown": "—",
+    "transcriptQuestion": "שאלה {n}"
   },
   "history": {
     "title": "היסטוריית מטלות",

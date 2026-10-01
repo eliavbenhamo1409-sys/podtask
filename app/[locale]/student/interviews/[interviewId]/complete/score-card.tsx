@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Badge } from "@/components/podtask/chip";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { GlowOrb } from "@/components/podtask/glow-orb";
 import { Steps } from "@/components/podtask/steps";
@@ -117,6 +118,37 @@ const LEVEL_KEYS = {
   high: "complete.levelHigh",
 } as const;
 
+const LEVEL_BADGE = {
+  low: "pink",
+  medium: "amber",
+  medium_high: "cyan",
+  high: "mint",
+} as const;
+
+/** Rubric criteria are scored 0..5 by generate-report. */
+const RUBRIC_MAX = 5;
+
+/** Counts from 0 to `value` once on mount; static when motion is reduced. */
+function CountUp({ value }: { value: number }) {
+  const reduce = useReducedMotion();
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    if (reduce) return;
+    let raf = 0;
+    const start = performance.now();
+    const duration = 1100;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(Math.round(value * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, reduce]);
+  return <>{reduce ? value : shown}</>;
+}
+
 const RUBRIC_KEYS: Array<{ key: keyof NonNullable<NonNullable<ReportShape>["rubric"]>; labelKey: string }> = [
   { key: "conceptual", labelKey: "complete.rubricConceptual" },
   { key: "reasoning", labelKey: "complete.rubricReasoning" },
@@ -195,19 +227,16 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
         style={{ marginTop: 32 }}
       >
         <div
-          className="card-hero"
+          className="card-hero card-pad"
           style={{ padding: "32px 36px", borderRadius: 28, textAlign: "start" }}
         >
           <div className="between" style={{ alignItems: "flex-start" }}>
             <Eyebrow icon={<SparkIcon size={14} />}>
               {t("complete.scoreLabel")}
             </Eyebrow>
-            <div
-              className="text-muted"
-              style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.18em" }}
-            >
+            <Badge variant={LEVEL_BADGE[level as keyof typeof LEVEL_BADGE] ?? "neutral"} showDot>
               {t(levelKey)}
-            </div>
+            </Badge>
           </div>
 
           <div
@@ -217,8 +246,10 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
               gap: 14,
               marginTop: 18,
             }}
+            aria-label={score !== null ? `${score} ${t("complete.outOf100")}` : undefined}
           >
             <div
+              aria-hidden
               style={{
                 fontSize: 72,
                 fontWeight: 800,
@@ -228,9 +259,10 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
-              {score ?? "—"}
+              {score !== null ? <CountUp value={score} /> : "—"}
             </div>
             <div
               className="text-muted"
@@ -267,14 +299,12 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
 
           {report.rubric && (
             <div
+              className="grid-stats-4"
               style={{
                 marginTop: 24,
                 padding: "16px 20px",
                 background: "rgba(246,251,255,0.7)",
                 borderRadius: 16,
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 12,
               }}
             >
               {RUBRIC_KEYS.map(({ key, labelKey }) => {
@@ -300,6 +330,31 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
                       }}
                     >
                       {typeof val === "number" ? val.toFixed(1) : "—"}
+                      {typeof val === "number" && (
+                        <span
+                          className="text-muted"
+                          style={{ fontSize: 12, fontWeight: 600, marginInlineStart: 4 }}
+                        >
+                          / {RUBRIC_MAX}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="meter"
+                      role="meter"
+                      aria-valuemin={0}
+                      aria-valuemax={RUBRIC_MAX}
+                      aria-valuenow={typeof val === "number" ? val : undefined}
+                      aria-label={t(labelKey)}
+                    >
+                      <span
+                        style={{
+                          width:
+                            typeof val === "number"
+                              ? `${Math.max(0, Math.min(100, (val / RUBRIC_MAX) * 100))}%`
+                              : "0%",
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -307,14 +362,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
             </div>
           )}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 24,
-              marginTop: 28,
-            }}
-          >
+          <div className="grid-feedback" style={{ marginTop: 28 }}>
             <FeedbackColumn
               titleKey="complete.strengthsTitle"
               tone="cyan"
@@ -458,7 +506,9 @@ function TranscriptGroupBlock({
 }) {
   const heading =
     group.index !== null
-      ? `Q${group.index + 1}. ${group.topic || group.question || ""}`.trim()
+      ? [t("complete.transcriptQuestion", { n: group.index + 1 }), group.topic || group.question || ""]
+          .filter(Boolean)
+          .join(" · ")
       : t("complete.transcriptTitle");
 
   return (

@@ -313,7 +313,8 @@
     "scoringSlow": "This is taking a little longer than usual. You can stay on this page — the score will appear here as soon as it is ready.",
     "refresh": "Refresh",
     "print": "Print confirmation",
-    "questionsUnknown": "—"
+    "questionsUnknown": "—",
+    "transcriptQuestion": "Question {n}"
   },
   "history": {
     "title": "Assignment history",

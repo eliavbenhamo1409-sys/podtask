@@ -109,6 +109,9 @@ interface InterviewRoomClientProps {
   assignmentTitle: string;
   questions: StudentInterviewQuestion[];
   locale: string;
+  /** Shown on the student card; falls back to a generic label. */
+  studentName?: string;
+  studentInitial?: string;
 }
 
 function makeTurnId(): string {
@@ -120,6 +123,8 @@ export function InterviewRoomClient({
   assignmentTitle,
   questions: initialQuestions,
   locale,
+  studentName,
+  studentInitial,
 }: InterviewRoomClientProps) {
   const t = useTranslations();
   const router = useRouter();
@@ -956,22 +961,23 @@ export function InterviewRoomClient({
     <div className="screen" style={{ minHeight: "100vh", position: "relative" }}>
       <Blobs variant="studio" />
 
-      <header className="topbar" style={{ padding: "14px 32px" }}>
-        <div className="row" style={{ gap: 12 }}>
+      <header className="topbar topbar-room">
+        <div className="row" style={{ gap: 12, minWidth: 0 }}>
           <BrandMark size={32} />
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 14 }}>
               {t("interview.live")}
             </div>
             <div
-              className="text-muted"
+              className="text-muted room-title"
               style={{ fontSize: 11, fontWeight: 600 }}
+              title={assignmentTitle}
             >
               {assignmentTitle}
             </div>
           </div>
         </div>
-        <div className="row" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 12, flexShrink: 0 }}>
           <Badge variant="pink">
             <span
               className="dot"
@@ -993,23 +999,10 @@ export function InterviewRoomClient({
         </div>
       </header>
 
-      <div
-        style={{
-          maxWidth: 1100,
-          margin: "0 auto",
-          padding: "32px 32px 220px",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
+      <div className="room-main">
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24,
-            isolation: "isolate",
-            paddingBottom: 8,
-          }}
+          className="grid-room"
+          style={{ isolation: "isolate", paddingBottom: 8 }}
         >
           {/* HOST CARD */}
           <motion.div
@@ -1168,22 +1161,18 @@ export function InterviewRoomClient({
                   boxShadow: "0 12px 30px rgba(14,165,233,0.2)",
                 }}
               >
-                {/* FRAGILE: the initial is sliced out of the translated
-                    dashboard greeting ("היי {name} — …" / "Hi {name} — …"),
-                    so Hebrew renders a blank circle and English renders "מ".
-                    Replacing it with the real profile initial is a visible
-                    change — needs owner sign-off. */}
-                {t("dashboard.greeting", { name: "מ" }).slice(3, 4) || "מ"}
+                {studentInitial ?? ""}
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div
                   style={{
                     fontSize: 22,
                     fontWeight: 800,
                     letterSpacing: "-0.02em",
+                    overflowWrap: "anywhere",
                   }}
                 >
-                  {t("interview.youName")}
+                  {studentName || t("interview.youName")}
                 </div>
                 <div
                   className="text-muted"
@@ -1305,13 +1294,7 @@ export function InterviewRoomClient({
           zIndex: 10,
         }}
       >
-        <div
-          style={{
-            maxWidth: 1100,
-            margin: "0 auto",
-            padding: "20px 32px 28px",
-          }}
-        >
+        <div className="room-dock-wrap">
           {/* SKIP / SWAP confirmation banner — always warns before acting. */}
           <AnimatePresence>
             {banner ? (
@@ -1341,9 +1324,10 @@ export function InterviewRoomClient({
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 16,
+                  flexWrap: "wrap",
                 }}
               >
-                <div>
+                <div style={{ flex: "1 1 260px" }}>
                   <div style={{ fontWeight: 800, fontSize: 15 }}>
                     {t(
                       banner === "skip"
@@ -1392,18 +1376,15 @@ export function InterviewRoomClient({
             ) : null}
           </AnimatePresence>
           <div
-            className="card"
+            className="card room-dock"
             style={{
               padding: "16px 20px",
               borderRadius: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
               background: "rgba(255,255,255,0.94)",
               backdropFilter: "blur(8px)",
             }}
           >
-            <div className="row" style={{ gap: 8 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1450,7 +1431,10 @@ export function InterviewRoomClient({
               ) : null}
             </div>
 
-            <div className="row" style={{ gap: 16, alignItems: "center" }}>
+            <div
+              className="row"
+              style={{ gap: 16, alignItems: "center", flexWrap: "wrap" }}
+            >
               {adapterMode === "openai" && wrappingUp ? (
                 <div className="row" style={{ gap: 12, alignItems: "center" }}>
                   <Spinner />
@@ -1461,7 +1445,7 @@ export function InterviewRoomClient({
               ) : adapterMode === "openai" ? (
                 <>
                   <div
-                    className="text-muted"
+                    className="text-muted hide-sm"
                     style={{ fontSize: 12, fontWeight: 600 }}
                   >
                     {muted

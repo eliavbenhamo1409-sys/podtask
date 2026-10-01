@@ -133,7 +133,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
             }}
           >
             <div className="grid-stats-3">
-              <div>
+              <div className="stat">
                 <div
                   className="text-muted"
                   style={{
@@ -145,6 +145,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                   {t("complete.duration")}
                 </div>
                 <div
+                  className="stat-value"
                   style={{
                     fontSize: 22,
                     fontWeight: 800,
@@ -155,7 +156,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                   {formatTime(duration)}
                 </div>
               </div>
-              <div>
+              <div className="stat">
                 <div
                   className="text-muted"
                   style={{
@@ -167,6 +168,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                   {t("complete.questions")}
                 </div>
                 <div
+                  className="stat-value"
                   style={{
                     fontSize: 22,
                     fontWeight: 800,
@@ -177,7 +179,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                   {totalQuestions > 0 ? totalQuestions : t("complete.questionsUnknown")}
                 </div>
               </div>
-              <div>
+              <div className="stat">
                 <div
                   className="text-muted"
                   style={{
@@ -189,6 +191,7 @@ export default async function CompletePage({ params }: CompletePageProps) {
                   {t("complete.submitted")}
                 </div>
                 <div
+                  className="stat-value"
                   style={{
                     fontSize: 22,
                     fontWeight: 800,
