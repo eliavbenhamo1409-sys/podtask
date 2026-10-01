@@ -24,7 +24,6 @@ import {
 } from "./mock-data";
 import {
   getAssignmentByIdSb,
-  getInterviewSb,
   getInterviewWithAssignmentSb,
   getReportForInterviewSb,
   getStudentAssignmentsSb,
@@ -32,10 +31,11 @@ import {
   getStudentHistorySb,
   getStudentProfileSb,
   getSubmissionLobbySb,
-  getSubmissionStatusSb,
   startInterviewSb,
   type StudentReport,
 } from "./student-service-supabase";
+import { MOCK_MODE } from "@/lib/env";
+import { isUuidLike } from "@/lib/utils";
 import type {
   StudentAssignment,
   StudentDashboard,
@@ -46,14 +46,9 @@ import type {
   StudentSubmission,
 } from "./types";
 
-const MOCK_MODE_ENV =
-  typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_MOCK_MODE !== "false";
-const UUID_RE = /^[0-9a-f-]{36}$/i;
-
 async function shouldUseRealBackend(id?: string): Promise<boolean> {
-  if (MOCK_MODE_ENV) return false;
-  if (id !== undefined && !UUID_RE.test(id)) return false;
+  if (MOCK_MODE) return false;
+  if (id !== undefined && !isUuidLike(id)) return false;
   return true;
 }
 
@@ -107,16 +102,6 @@ export async function getStudentHistory(): Promise<StudentHistoryEntry[]> {
   return MOCK_HISTORY;
 }
 
-export async function getSubmissionStatus(
-  submissionId: string,
-): Promise<StudentSubmission | null> {
-  if (await shouldUseRealBackend(submissionId)) {
-    const sb = await getSb();
-    return await getSubmissionStatusSb(sb, submissionId);
-  }
-  return findMockSubmission(submissionId) ?? null;
-}
-
 export async function getSubmissionLobby(submissionId: string): Promise<{
   submission: StudentSubmission;
   assignment: StudentAssignment;
@@ -135,16 +120,6 @@ export async function getSubmissionLobby(submissionId: string): Promise<{
     : undefined;
   if (!interview) return null;
   return { submission, assignment, interview };
-}
-
-export async function getInterview(
-  interviewId: string,
-): Promise<StudentInterview | null> {
-  if (await shouldUseRealBackend(interviewId)) {
-    const sb = await getSb();
-    return await getInterviewSb(sb, interviewId);
-  }
-  return findMockInterview(interviewId) ?? null;
 }
 
 export async function getInterviewWithAssignment(interviewId: string) {

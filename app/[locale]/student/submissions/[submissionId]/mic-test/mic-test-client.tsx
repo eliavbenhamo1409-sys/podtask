@@ -18,7 +18,7 @@ import {
   RepeatIcon,
   XIcon,
 } from "@/components/podtask/icons";
-import { runMicPermissionCheck } from "@/lib/student/student-service";
+import { runMicPermissionCheck } from "@/lib/realtime/mic-permission";
 import type { MicPermissionState } from "@/lib/student/status";
 
 interface MicTestClientProps {

@@ -7,7 +7,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   STORAGE_BUCKETS,
   assignmentFilePath,
-  createSignedUrl,
   uploadToBucket,
 } from "@/lib/supabase/storage";
 import type { Database } from "@/lib/supabase/database.types";
@@ -42,10 +41,10 @@ function deriveBadge(
 }
 
 function projectAssignmentStatus(
-  submission?: StudentSubmission,
+  status?: SubmissionStatus,
 ): StudentAssignmentStatus {
-  if (!submission) return "upload_required";
-  switch (submission.status) {
+  if (!status) return "upload_required";
+  switch (status) {
     case "uploaded":
     case "parsing":
     case "parsed":
@@ -64,9 +63,29 @@ function projectAssignmentStatus(
   }
 }
 
-function rowToProfile(
-  row: Database["public"]["Tables"]["profiles"]["Row"] & { institution?: { name: string } | null },
-): StudentProfile {
+type SubmissionRowFull = Database["public"]["Tables"]["submissions"]["Row"];
+
+/** Single source of truth for the submissions row -> UI shape mapping. */
+function rowToSubmission(row: SubmissionRowFull): StudentSubmission {
+  return {
+    id: row.id,
+    assignmentId: row.assignment_id,
+    studentId: row.student_id,
+    status: row.status as SubmissionStatus,
+    originalFilename: row.original_filename ?? "",
+    fileSizeBytes: Number(row.file_size_bytes ?? 0),
+    submittedAt: row.submitted_at,
+    failureReason: row.failure_reason ?? undefined,
+  };
+}
+
+// `institution` comes from the embedded select `institution:institutions ( name )`;
+// institution_id is a many-to-one FK, so PostgREST returns an object or null.
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"] & {
+  institution?: { name: string } | null;
+};
+
+function rowToProfile(row: ProfileRow): StudentProfile {
   return {
     id: row.id,
     fullName: row.full_name ?? row.email,
@@ -88,7 +107,7 @@ export async function getStudentProfileSb(
     .eq("id", user.user.id)
     .maybeSingle();
   if (error || !data) return null;
-  return rowToProfile(data as never);
+  return rowToProfile(data as unknown as ProfileRow);
 }
 
 export async function getStudentAssignmentsSb(
@@ -170,17 +189,7 @@ export async function getStudentAssignmentsSb(
     const course = Array.isArray(courseRaw) ? courseRaw[0] : courseRaw;
     const sub = subByAssignment.get(a.id);
     const status: StudentAssignmentStatus = projectAssignmentStatus(
-      sub
-        ? {
-            id: sub.id,
-            assignmentId: sub.assignment_id,
-            studentId: user.user!.id,
-            status: sub.status as SubmissionStatus,
-            originalFilename: sub.original_filename ?? "",
-            fileSizeBytes: Number(sub.file_size_bytes ?? 0),
-            submittedAt: sub.submitted_at,
-          }
-        : undefined,
+      sub?.status as SubmissionStatus | undefined,
     );
 
     return {
@@ -288,24 +297,13 @@ export async function getSubmissionStatusSb(
     .eq("id", submissionId)
     .maybeSingle();
   if (error || !data) return null;
-  return {
-    id: data.id,
-    assignmentId: data.assignment_id,
-    studentId: data.student_id,
-    status: data.status as SubmissionStatus,
-    originalFilename: data.original_filename ?? "",
-    fileSizeBytes: Number(data.file_size_bytes ?? 0),
-    submittedAt: data.submitted_at,
-    failureReason: data.failure_reason ?? undefined,
-  };
+  return rowToSubmission(data);
 }
-
-export type SbProcessingObserver = (s: StudentSubmission) => void;
 
 export function subscribeToSubmissionSb(
   sb: SbClient,
   submissionId: string,
-  observer: SbProcessingObserver,
+  observer: (s: StudentSubmission) => void,
 ): () => void {
   const channel = sb
     .channel(`submission:${submissionId}`)
@@ -318,17 +316,7 @@ export function subscribeToSubmissionSb(
         filter: `id=eq.${submissionId}`,
       },
       (payload) => {
-        const row = payload.new as Database["public"]["Tables"]["submissions"]["Row"];
-        observer({
-          id: row.id,
-          assignmentId: row.assignment_id,
-          studentId: row.student_id,
-          status: row.status as SubmissionStatus,
-          originalFilename: row.original_filename ?? "",
-          fileSizeBytes: Number(row.file_size_bytes ?? 0),
-          submittedAt: row.submitted_at,
-          failureReason: row.failure_reason ?? undefined,
-        });
+        observer(rowToSubmission(payload.new as SubmissionRowFull));
       },
     )
     .subscribe();
@@ -441,13 +429,6 @@ export async function getInterviewSb(
         recommendedSeconds: q.recommended_seconds ?? 120,
       })) ?? [],
   };
-}
-
-export async function getSignedAssignmentFileUrlSb(
-  sb: SbClient,
-  filePath: string,
-): Promise<string> {
-  return createSignedUrl(sb, STORAGE_BUCKETS.ASSIGNMENT_FILES, filePath);
 }
 
 export async function getInterviewWithAssignmentSb(
@@ -704,14 +685,7 @@ export async function uploadSelfInitiatedFileSb(
   const title = baseName ? baseName.charAt(0).toUpperCase() + baseName.slice(1) : "Personal task";
   const lang = "he";
 
-  type CreatePersonalAssignmentArgs = { p_title: string; p_language: string };
-  const sbAny = sb as unknown as {
-    rpc: (
-      fn: string,
-      args: CreatePersonalAssignmentArgs,
-    ) => Promise<{ data: string | null; error: { message: string } | null }>;
-  };
-  const { data: assignmentId, error: rpcErr } = await sbAny.rpc(
+  const { data: assignmentId, error: rpcErr } = await sb.rpc(
     "create_personal_assignment",
     { p_title: title, p_language: lang },
   );

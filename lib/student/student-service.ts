@@ -40,24 +40,12 @@ import type {
 } from "./types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { MOCK_MODE } from "@/lib/env";
+import { isUuidLike } from "@/lib/utils";
 
 // =============================================================================
 // Mode + id helpers
 // =============================================================================
-
-const MOCK_MODE_ENV =
-  typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_MOCK_MODE !== "false";
-
-const UUID_RE = /^[0-9a-f-]{36}$/i;
-
-export function isMockMode() {
-  return MOCK_MODE_ENV;
-}
-
-function isUuid(id: string) {
-  return UUID_RE.test(id);
-}
 
 /**
  * Returns true if we should run the real Supabase pipeline for this id. A
@@ -67,8 +55,8 @@ function isUuid(id: string) {
  * Named so eslint-plugin-react-hooks doesn't think it's a hook.
  */
 function shouldUseRealBackend(id?: string): boolean {
-  if (MOCK_MODE_ENV) return false;
-  if (id !== undefined && !isUuid(id)) return false;
+  if (MOCK_MODE) return false;
+  if (id !== undefined && !isUuidLike(id)) return false;
   return true;
 }
 
@@ -235,11 +223,11 @@ export interface UploadResult {
   submission: StudentSubmission;
 }
 
-export async function createSubmission(
+async function createSubmission(
   assignmentId: string,
   file: { name: string; size: number; type: string },
 ): Promise<UploadResult> {
-  // Mock-only path used by tests; real uploads go through uploadAssignmentFile.
+  // Mock-mode path; real uploads go through uploadAssignmentFile.
   const id = `sub-${assignmentId}-${Date.now()}`;
   const submission: StudentSubmission = {
     id,
@@ -298,7 +286,7 @@ export interface SelfInitiatedResult {
   submission: StudentSubmission;
 }
 
-export async function createSelfInitiatedTask(file: {
+async function createSelfInitiatedTask(file: {
   name: string;
   size: number;
   type: string;
@@ -427,19 +415,6 @@ export async function prepareSubmission(
   return { submissionId, interviewId };
 }
 
-export async function getSubmissionStatus(
-  submissionId: string,
-): Promise<StudentSubmission | null> {
-  if (shouldUseRealBackend(submissionId)) {
-    const { getSubmissionStatusSb } = await import(
-      "./student-service-supabase"
-    );
-    const sb = await getSb();
-    return await getSubmissionStatusSb(sb, submissionId);
-  }
-  return findOrRecoverSubmission(submissionId) ?? null;
-}
-
 export type ProcessingObserver = (submission: StudentSubmission) => void;
 
 /**
@@ -517,58 +492,9 @@ export function observeSubmissionProcessing(
   };
 }
 
-export async function getSubmissionLobby(submissionId: string): Promise<{
-  submission: StudentSubmission;
-  assignment: StudentAssignment;
-  interview: StudentInterview;
-} | null> {
-  if (shouldUseRealBackend(submissionId)) {
-    const { getSubmissionLobbySb, prepareSubmissionInvokeSb } = await import(
-      "./student-service-supabase"
-    );
-    const sb = await getSb();
-    let lobby = await getSubmissionLobbySb(sb, submissionId);
-    if (lobby && lobby.interview.id === "") {
-      // Submission exists but no interview yet — kick off processing once
-      // and re-read.
-      try {
-        await prepareSubmissionInvokeSb(sb, submissionId);
-      } catch {
-        // Best-effort; we'll reflect the failure via submission.status.
-      }
-      lobby = await getSubmissionLobbySb(sb, submissionId);
-    }
-    return lobby;
-  }
-
-  const submission = findOrRecoverSubmission(submissionId);
-  if (!submission) return null;
-  const assignment = findMockAssignment(submission.assignmentId);
-  if (!assignment) return null;
-
-  if (!submission.interviewId) {
-    await prepareSubmission(submissionId);
-  }
-  const interview = findMockInterview(submission.interviewId!);
-  if (!interview) return null;
-
-  return { submission, assignment, interview };
-}
-
 // -----------------------------------------------------------------------------
 // Interview lifecycle
 // -----------------------------------------------------------------------------
-
-export async function getInterview(
-  interviewId: string,
-): Promise<StudentInterview | null> {
-  if (shouldUseRealBackend(interviewId)) {
-    const { getInterviewSb } = await import("./student-service-supabase");
-    const sb = await getSb();
-    return await getInterviewSb(sb, interviewId);
-  }
-  return findMockInterview(interviewId) ?? null;
-}
 
 export async function getInterviewWithAssignment(interviewId: string) {
   if (shouldUseRealBackend(interviewId)) {
@@ -696,15 +622,4 @@ export async function getReportForInterview(interviewId: string) {
     return await getReportForInterviewSb(sb, interviewId);
   }
   return null;
-}
-
-export async function runMicPermissionCheck(): Promise<"granted" | "denied"> {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices) return "denied";
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((t) => t.stop());
-    return "granted";
-  } catch {
-    return "denied";
-  }
 }

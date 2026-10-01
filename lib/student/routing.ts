@@ -1,3 +1,8 @@
+/**
+ * Which screen an assignment card should open next, derived from the
+ * submission / interview status. Pure; used by the dashboard and the
+ * assignments list.
+ */
 import type { StudentAssignment, StudentInterview, StudentSubmission } from "./types";
 
 export function nextRouteForAssignment(
@@ -44,14 +49,4 @@ export function nextRouteForAssignment(
   }
 
   return `/student/assignments/${assignment.id}`;
-}
-
-export function continueLabelKey(
-  assignment: StudentAssignment,
-): "common.continue" | "details.startUpload" | "complete.backToDashboard" {
-  if (assignment.status === "completed") return "complete.backToDashboard";
-  if (assignment.status === "not_started" || assignment.status === "upload_required") {
-    return "details.startUpload";
-  }
-  return "common.continue";
 }

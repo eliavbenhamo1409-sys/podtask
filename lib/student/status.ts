@@ -1,3 +1,16 @@
+/**
+ * The four status vocabularies of the student pipeline, mirrored by hand from
+ * the Postgres enums in `lib/supabase/database.types.ts` (keep in sync):
+ *
+ *  - `SubmissionStatus`         — `submissions.status`, written by the edge functions.
+ *  - `InterviewStatus`          — `interviews.status`, lifecycle of the interview row.
+ *  - `InterviewRuntimeState`    — the browser FSM in `lib/realtime/interview-session.ts`.
+ *  - `StudentAssignmentStatus`  — derived (never stored) card status; the mapping
+ *    from submission status lives in `projectAssignmentStatus`
+ *    (`student-service-supabase.ts`), routing in `routing.ts`.
+ *
+ * See ARCHITECTURE.md §2 for the derivation rules.
+ */
 export const STUDENT_ASSIGNMENT_STATUS = [
   "not_started",
   "upload_required",

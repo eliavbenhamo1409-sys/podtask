@@ -1,3 +1,8 @@
+// GENERATED from the Supabase schema (project jxlrpewoqikpswxmtdma) — do not
+// hand-edit table types. Regenerate with the Supabase MCP tool
+// `generate_typescript_types` (or `supabase gen types typescript --linked`)
+// after every migration, then re-add the `Functions` block below if the
+// generator drops it.
 export type Json =
   | string
   | number
@@ -407,7 +412,13 @@ export type Database = {
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      // supabase/migrations/20260506000001_personal_assignments.sql
+      create_personal_assignment: {
+        Args: { p_title: string; p_language?: string }
+        Returns: string
+      }
+    }
     Enums: {
       ai_operation:
         | "parse_document"

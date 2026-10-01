@@ -11,6 +11,14 @@ export function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Loose UUID check used to tell real Supabase ids from demo ids such as
+ * `a1`, `int-a4` or `self-…`. Non-UUID ids always stay on the mock path.
+ */
+export function isUuidLike(id: string): boolean {
+  return /^[0-9a-f-]{36}$/i.test(id);
+}
+
 export function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60)
     .toString()

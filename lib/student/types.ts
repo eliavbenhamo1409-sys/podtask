@@ -1,3 +1,8 @@
+/**
+ * UI-facing shapes for the student studio. These are what pages and
+ * components consume; the DB rows are mapped into them in
+ * `student-service-supabase.ts` (real) and `mock-data.ts` (demo).
+ */
 import type {
   InterviewRuntimeState,
   InterviewStatus,
@@ -62,15 +67,6 @@ export interface StudentInterviewQuestion {
   topic: string;
   question: string;
   recommendedSeconds: number;
-}
-
-export interface StudentInterviewMessage {
-  id: string;
-  interviewId: string;
-  speaker: "ai_host" | "student" | "system";
-  messageType: "question" | "answer" | "followup" | "system" | "summary";
-  content: string;
-  startedAt: string;
 }
 
 export interface InterviewTranscriptMessage {

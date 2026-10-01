@@ -2,6 +2,7 @@ import { type CookieOptions, createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
 import { defaultLocale, locales } from "../i18n/config";
+import { MOCK_MODE } from "../env";
 
 const PROTECTED_PATTERNS = [/^\/(he|en)\/student(\/|$)/];
 
@@ -50,9 +51,7 @@ export async function updateSession(
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const mockMode = process.env.NEXT_PUBLIC_MOCK_MODE !== "false";
-
-  if (!mockMode && !user && isProtectedPath(pathname)) {
+  if (!MOCK_MODE && !user && isProtectedPath(pathname)) {
     const url = request.nextUrl.clone();
     const localePrefix =
       locales.find((l) => pathname.startsWith(`/${l}/`)) ?? defaultLocale;

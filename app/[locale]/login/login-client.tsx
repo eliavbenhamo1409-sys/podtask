@@ -9,6 +9,7 @@ import { BrandMark } from "@/components/podtask/brand-mark";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { ArrowIcon, SparkIcon } from "@/components/podtask/icons";
 import { createClient } from "@/lib/supabase/client";
+import { MOCK_MODE } from "@/lib/env";
 
 const STALE_GUEST_COOKIE_CLEAR =
   "pt_guest=; path=/; max-age=0; SameSite=Lax";
@@ -21,9 +22,7 @@ export function LoginClient() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [magicSent, setMagicSent] = useState(false);
-  const mockMode =
-    typeof process !== "undefined" &&
-    process.env.NEXT_PUBLIC_MOCK_MODE !== "false";
+  const mockMode = MOCK_MODE;
 
   useEffect(() => {
     if (typeof document === "undefined") return;
