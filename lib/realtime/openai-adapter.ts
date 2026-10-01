@@ -505,7 +505,10 @@ export class OpenAIRealtimeAdapter {
       case "response.output_item.added": {
         const item = event.item;
         if (item?.type === "function_call") {
-          const id = item.id ?? event.item_id ?? randomId();
+          // Later `.delta` / `.done` events look the call up by item_id only,
+          // so an entry without one could never be matched.
+          const id = item.id ?? event.item_id;
+          if (!id) break;
           this.pendingCalls.set(id, {
             name: item.name,
             callId: item.call_id,
@@ -663,8 +666,4 @@ function rms(buf: Uint8Array): number {
     sum += v * v;
   }
   return Math.min(1, Math.sqrt(sum / buf.length));
-}
-
-function randomId(): string {
-  return `pc_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }

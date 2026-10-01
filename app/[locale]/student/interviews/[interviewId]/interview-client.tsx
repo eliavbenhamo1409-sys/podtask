@@ -1,5 +1,33 @@
 "use client";
 
+/**
+ * Live interview room — one component, two drivers.
+ *
+ * MODE. `adapterMode` is "openai" only when NEXT_PUBLIC_REALTIME_ADAPTER=openai
+ * AND the interview id is a real UUID; demo ids always run the "mock" driver
+ * (timer-driven FSM in `useInterviewSession`). The two driver effects, and the
+ * spacebar mute shortcut, are mutually exclusive on `adapterMode`.
+ *
+ * LIVE DRIVER. Opens a WebRTC session via `OpenAIRealtimeAdapter`; the host
+ * already has the full planned-question list in its system prompt and owns
+ * the pacing. The browser only (1) kicks off the first response, (2) streams
+ * the host transcript to screen + persists both sides, (3) infers question
+ * progress from the host's words (`host-text-heuristics.ts`), and (4) closes.
+ *
+ * CLOSE PATHS. All three funnel into `sessionRef.current.close()` and are
+ * de-duplicated by `finalAnswerHandledRef`:
+ *   a. `finish_interview` tool call → wait for the farewell audio to end
+ *      (`onAssistantAudioEnd`), with a 10 s safety timer (600 ms grace when
+ *      the host was already silent).
+ *   b. Closing-phrase watchdog: a strong farewell sentence, gated by ≥1 student
+ *      answer / repeated hits / ≥45 s elapsed, arms a 3 s timer.
+ *   c. Final-answer fallback: once the last planned question was detected, the
+ *      next substantive student utterance closes the session.
+ * `close()` moves the FSM to `closing` → `onCompleted` → router.push(/complete).
+ *
+ * PAUSE only pauses the on-screen timer; the live session keeps running.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
@@ -21,7 +49,9 @@ import {
   XIcon,
 } from "@/components/podtask/icons";
 import { MOCK_INTERVIEW_QUESTIONS } from "@/lib/student/mock-data";
-import { formatTime } from "@/lib/utils";
+import { REALTIME_ADAPTER } from "@/lib/env";
+import { useHeldTrue } from "@/lib/hooks/use-held-true";
+import { formatTime, isUuidLike } from "@/lib/utils";
 import {
   useInterviewSession,
   type InterviewAdapterMode,
@@ -31,12 +61,16 @@ import {
   type RealtimeToolCall,
 } from "@/lib/realtime/openai-adapter";
 import { createRealtimeSession } from "@/lib/realtime/realtime-client";
+import {
+  detectExplicitQuestionNumber,
+  detectPlannedQuestionIndex,
+  looksLikeInterviewClosing,
+  looksLikePlannedQuestionTransition,
+} from "@/lib/realtime/host-text-heuristics";
 import type { StudentInterviewQuestion } from "@/lib/student/types";
+import { LevelBar, Spinner, TranscriptBubble, makeHalo } from "./interview-parts";
 
-const ADAPTER_MODE: InterviewAdapterMode =
-  process.env.NEXT_PUBLIC_REALTIME_ADAPTER === "openai" ? "openai" : "mock";
-
-const UUID_RE = /^[0-9a-f-]{36}$/i;
+// ---- Section: build/mode config ----
 
 // UI-only "is the speaker actually talking" threshold for the halo / chip.
 // The server's VAD (turn_detection) is the authoritative gate for actually
@@ -86,7 +120,7 @@ export function InterviewRoomClient({
   const [adapterError, setAdapterError] = useState<string | null>(null);
 
   const adapterMode: InterviewAdapterMode =
-    ADAPTER_MODE === "openai" && UUID_RE.test(interviewId) ? "openai" : "mock";
+    REALTIME_ADAPTER === "openai" && isUuidLike(interviewId) ? "openai" : "mock";
 
   const session = useInterviewSession({
     interviewId,
@@ -146,10 +180,12 @@ export function InterviewRoomClient({
     }
   }, [interviewId]);
 
-  // Single rolling transcript for both sides. Each entry is one "turn"
-  // (one continuous stream of speech from one speaker). When delta events
-  // arrive we append to the trailing turn for that speaker, or start a
-  // new turn if the speaker changed or the previous turn was finalized.
+  // ---- Section: transcript buffer ----
+
+  // Rolling on-screen transcript of the HOST's speech (student answers are
+  // persisted to the DB but not rendered). Each entry is one "turn": delta
+  // events append to the trailing un-finalized turn, and a new turn starts
+  // once the previous one was finalized.
   const [transcript, setTranscript] = useState<TurnEntry[]>([]);
 
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
@@ -173,6 +209,8 @@ export function InterviewRoomClient({
     },
     [],
   );
+
+  // ---- Section: auto-close watchdog ----
 
   // Arms the closing watchdog. Idempotent — repeated calls don't re-stack
   // timers. Uses a 3 s ceiling because the host's audio_end fires within
@@ -218,6 +256,8 @@ export function InterviewRoomClient({
     },
     [],
   );
+
+  // ---- Section: drivers (mock FSM / OpenAI WebRTC) ----
 
   // Mock driver: kick the FSM as soon as the room mounts.
   useEffect(() => {
@@ -274,6 +314,25 @@ export function InterviewRoomClient({
         // responds with "Conversation already has an active response in
         // progress" — surfaced to the user as a network error.
         let kickedOff = false;
+
+        // Shared handler for both "final student text" events the adapter
+        // emits (conversation item done + input transcription completed).
+        // Both events still fire exactly as before; only the body is shared.
+        const handleStudentUtterance = (text: string) => {
+          if (!text) return;
+          sessionRef.current.persistStudentMessage(text);
+          if (text.trim().length > 2) {
+            studentAnswerCountRef.current += 1;
+          }
+          if (
+            waitingForFinalAnswerRef.current &&
+            !finalAnswerHandledRef.current &&
+            text.trim().length > 2
+          ) {
+            finalAnswerHandledRef.current = true;
+            sessionRef.current.close();
+          }
+        };
 
         const adapter = new OpenAIRealtimeAdapter({
           onOpen: () => {
@@ -347,11 +406,7 @@ export function InterviewRoomClient({
               const explicitIdx = detectExplicitQuestionNumber(text, locale);
               let resolvedIdx = explicitIdx;
               if (resolvedIdx < 0) {
-                resolvedIdx = detectPlannedQuestionIndex(
-                  text,
-                  cappedQuestions,
-                  locale,
-                );
+                resolvedIdx = detectPlannedQuestionIndex(text, cappedQuestions);
               }
               if (
                 resolvedIdx < 0 &&
@@ -408,44 +463,14 @@ export function InterviewRoomClient({
               }
             }
           },
-          onUserMessageDone: (text) => {
-            if (text) {
-              sessionRef.current.persistStudentMessage(text);
-              if (text.trim().length > 2) {
-                studentAnswerCountRef.current += 1;
-              }
-              if (
-                waitingForFinalAnswerRef.current &&
-                !finalAnswerHandledRef.current &&
-                text.trim().length > 2
-              ) {
-                finalAnswerHandledRef.current = true;
-                sessionRef.current.close();
-              }
-            }
-          },
+          onUserMessageDone: handleStudentUtterance,
           onAssistantTranscriptDelta: (delta) => {
             appendTranscriptDelta(delta);
           },
           onAssistantTranscriptDone: (text) => {
             finalizeTranscript(text);
           },
-          onUserTranscriptDone: (text) => {
-            if (text) {
-              sessionRef.current.persistStudentMessage(text);
-              if (text.trim().length > 2) {
-                studentAnswerCountRef.current += 1;
-              }
-              if (
-                waitingForFinalAnswerRef.current &&
-                !finalAnswerHandledRef.current &&
-                text.trim().length > 2
-              ) {
-                finalAnswerHandledRef.current = true;
-                sessionRef.current.close();
-              }
-            }
-          },
+          onUserTranscriptDone: handleStudentUtterance,
           onAssistantAudioLevel: setHostLevel,
           onUserAudioLevel: setUserLevel,
           onToolCall: (call: RealtimeToolCall) => {
@@ -552,6 +577,11 @@ export function InterviewRoomClient({
         setAdapterError(message);
         sessionRef.current.fail(message);
         micStream?.getTracks().forEach((tk) => tk.stop());
+        // Tear down the half-built adapter: connect() starts the audio-level
+        // RAF loop and AudioContext before the SDP handshake, so a failed
+        // handshake would otherwise leave them running until unmount.
+        adapterRef.current?.disconnect();
+        adapterRef.current = null;
       }
     })();
 
@@ -575,12 +605,19 @@ export function InterviewRoomClient({
     locale,
   ]);
 
+  // ---- Section: timers + keyboard shortcuts ----
+
+  const closingOrDone =
+    session.state === "closing" || session.state === "completed";
+
+  // Elapsed-time ticker. Keyed on the boolean (not session.state) so the
+  // interval survives intermediate FSM transitions instead of restarting
+  // and dropping the partial second on every one.
   useEffect(() => {
-    if (paused) return;
-    if (session.state === "completed" || session.state === "closing") return;
+    if (paused || closingOrDone) return;
     const tid = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(tid);
-  }, [paused, session.state]);
+  }, [paused, closingOrDone]);
 
   useEffect(() => {
     elapsedRef.current = elapsed;
@@ -597,13 +634,14 @@ export function InterviewRoomClient({
     }
   }, [session.state]);
 
-  function toggleMute() {
+  // Reads the adapter through a ref at call time, so `[]` deps are correct.
+  const toggleMute = useCallback(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
     const nextEnabled = !adapter.isMicEnabled();
     const result = adapter.setMicEnabled(nextEnabled);
     setMuted(!result);
-  }
+  }, []);
 
   // Spacebar mute toggle for live mode.
   useEffect(() => {
@@ -620,23 +658,19 @@ export function InterviewRoomClient({
         return;
       }
       e.preventDefault();
-      const adapter = adapterRef.current;
-      if (!adapter) return;
-      const nextEnabled = !adapter.isMicEnabled();
-      const result = adapter.setMicEnabled(nextEnabled);
-      setMuted(!result);
+      toggleMute();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [adapterMode]);
+  }, [adapterMode, toggleMute]);
+
+  // ---- Section: derived view state ----
 
   const aiSpeaking =
     session.state === "host_intro" || session.state === "ai_speaking";
   const recording = session.state === "student_recording";
   const processing =
     session.state === "transcribing" || session.state === "evaluating_answer";
-  const closingOrDone =
-    session.state === "closing" || session.state === "completed";
 
   const hostActive =
     adapterMode === "openai"
@@ -647,17 +681,9 @@ export function InterviewRoomClient({
       ? userLevel > SPEECH_LEVEL_THRESHOLD && !muted
       : recording;
 
-  // Smoothed "host is speaking" signal for the transcript glow — see
-  // the original implementation: avoids strobing on syllable gaps.
-  const [hostGlow, setHostGlow] = useState(false);
-  useEffect(() => {
-    if (hostActive) {
-      setHostGlow(true);
-      return;
-    }
-    const id = window.setTimeout(() => setHostGlow(false), 320);
-    return () => window.clearTimeout(id);
-  }, [hostActive]);
+  // Smoothed "host is speaking" signal for the transcript glow — holds true
+  // for 320 ms after the level drops so it doesn't strobe on syllable gaps.
+  const hostGlow = useHeldTrue(hostActive, 320);
 
   function handleEndEarly() {
     session.close();
@@ -695,6 +721,8 @@ export function InterviewRoomClient({
           : t("interview.nextQuestion");
 
   const halo = makeHalo(hostLevel, userLevel);
+
+  // ---- Section: JSX ----
 
   return (
     <div className="screen" style={{ minHeight: "100vh", position: "relative" }}>
@@ -912,6 +940,11 @@ export function InterviewRoomClient({
                   boxShadow: "0 12px 30px rgba(14,165,233,0.2)",
                 }}
               >
+                {/* FRAGILE: the initial is sliced out of the translated
+                    dashboard greeting ("היי {name} — …" / "Hi {name} — …"),
+                    so Hebrew renders a blank circle and English renders "מ".
+                    Replacing it with the real profile initial is a visible
+                    change — needs owner sign-off. */}
                 {t("dashboard.greeting", { name: "מ" }).slice(3, 4) || "מ"}
               </div>
               <div>
@@ -954,9 +987,9 @@ export function InterviewRoomClient({
         </div>
 
         {/* LIVE TRANSCRIPT — replaces the old per-question card. Renders
-            both sides of the conversation in chronological order, with a
-            soft glow when the host is currently speaking. Auto-scrolls
-            to the latest line. */}
+            the host's side of the conversation in chronological order,
+            with a soft glow when the host is currently speaking.
+            Auto-scrolls to the latest line. */}
         {adapterMode === "openai" ? (
           <motion.div
             className="card"
@@ -1261,331 +1294,3 @@ export function InterviewRoomClient({
   );
 }
 
-function TranscriptBubble({
-  text,
-  isLive,
-  hostLabel,
-}: {
-  text: string;
-  isLive: boolean;
-  hostLabel: string;
-}) {
-  const accentColor = "#0EA5E9";
-  const bubbleBg = "rgba(14,165,233,0.06)";
-  const bubbleBorder = "rgba(14,165,233,0.18)";
-  const labelBg = "rgba(14,165,233,0.10)";
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr",
-        columnGap: 12,
-        alignItems: "start",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: accentColor,
-          padding: "4px 10px",
-          borderRadius: 999,
-          background: labelBg,
-          whiteSpace: "nowrap",
-          alignSelf: "start",
-          marginTop: 4,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {hostLabel}
-        {isLive ? (
-          <span
-            aria-hidden
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: accentColor,
-              boxShadow: `0 0 6px ${accentColor}`,
-              animation: "pulse 1.1s ease-in-out infinite",
-            }}
-          />
-        ) : null}
-      </div>
-      <div
-        style={{
-          fontSize: 16,
-          lineHeight: 1.6,
-          fontWeight: 500,
-          color: "rgb(var(--ink))",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          padding: "10px 14px",
-          borderRadius: 14,
-          background: bubbleBg,
-          border: `1px solid ${bubbleBorder}`,
-        }}
-      >
-        {text || "…"}
-      </div>
-    </div>
-  );
-}
-
-function makeHalo(hostLevel: number, userLevel: number) {
-  return {
-    host: Math.min(Math.round(hostLevel * 70), 70),
-    user: Math.min(Math.round(userLevel * 70), 70),
-  };
-}
-
-function LevelBar({
-  level,
-  variant,
-}: {
-  level: number;
-  variant: "cyan" | "pink";
-}) {
-  const fill = Math.min(1, Math.max(0, level * 4));
-  const color = variant === "pink" ? "#FB7185" : "#38BDF8";
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 120,
-        height: 4,
-        borderRadius: 2,
-        background: "rgba(148,163,184,0.18)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          width: `${fill * 100}%`,
-          height: "100%",
-          background: color,
-          transition: "width .12s linear",
-        }}
-      />
-    </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        border: "3px solid rgba(56,189,248,0.25)",
-        borderTopColor: "#38BDF8",
-        display: "inline-block",
-        animation: "spin 0.9s linear infinite",
-      }}
-    />
-  );
-}
-
-// High-confidence detector: looks for explicit ordinal/number markers
-// in the host's announcement, e.g. "אנחנו בשאלה השלישית" or
-// "We're on the fifth and final question". The host is now instructed
-// to prefix every NEW planned question with such an announcement, so
-// when this fires it's much more reliable than fuzzy text matching.
-//
-// Returns the 0-based question index, or -1 when no marker is found.
-function detectExplicitQuestionNumber(
-  text: string,
-  locale: string,
-): number {
-  if (!text) return -1;
-  if (locale === "he") {
-    const HE_ORDINALS: Array<[string, number]> = [
-      ["ראשונה", 0],
-      ["שנייה", 1],
-      ["שניה", 1],
-      ["שלישית", 2],
-      ["רביעית", 3],
-      ["חמישית", 4],
-      ["שישית", 5],
-      ["שביעית", 6],
-      ["שמינית", 7],
-      ["תשיעית", 8],
-      ["עשירית", 9],
-    ];
-    for (const [word, ordinal] of HE_ORDINALS) {
-      if (
-        text.includes(`שאלה ה${word}`) ||
-        text.includes(`שאלה ${word}`) ||
-        text.includes(`השאלה ה${word}`)
-      ) {
-        return ordinal;
-      }
-    }
-    const numMatch = text.match(/שאלה\s+(?:מספר\s+)?(\d{1,2})\b/);
-    if (numMatch) {
-      const n = Number.parseInt(numMatch[1], 10);
-      if (Number.isFinite(n) && n >= 1) return n - 1;
-    }
-    return -1;
-  }
-  const lower = text.toLowerCase();
-  const EN_ORDINALS: Array<[string, number]> = [
-    ["first", 0],
-    ["second", 1],
-    ["third", 2],
-    ["fourth", 3],
-    ["fifth", 4],
-    ["sixth", 5],
-    ["seventh", 6],
-    ["eighth", 7],
-    ["ninth", 8],
-    ["tenth", 9],
-  ];
-  for (const [word, ordinal] of EN_ORDINALS) {
-    if (
-      new RegExp(
-        `\\b${word}\\s+(?:and\\s+(?:final|last)\\s+)?question\\b`,
-      ).test(lower) ||
-      new RegExp(`\\bquestion\\s+(?:number\\s+)?${word}\\b`).test(lower)
-    ) {
-      return ordinal;
-    }
-  }
-  const numMatch = lower.match(/\bquestion\s+(?:number\s+)?(\d{1,2})\b/);
-  if (numMatch) {
-    const n = Number.parseInt(numMatch[1], 10);
-    if (Number.isFinite(n) && n >= 1) return n - 1;
-  }
-  return -1;
-}
-
-function detectPlannedQuestionIndex(
-  assistantText: string,
-  questions: StudentInterviewQuestion[],
-  locale: string,
-): number {
-  const hay = normalizeForMatch(assistantText);
-  if (!hay) return -1;
-  let bestIndex = -1;
-  let bestScore = 0;
-  // Match against known question texts from the plan.
-  // We score each question and pick the strongest candidate.
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const he = normalizeForMatch(q.question);
-    const en = normalizeForMatch(
-      locale === "en"
-        ? ((q as { questionEn?: string }).questionEn ?? "")
-        : ((q as { questionEn?: string }).questionEn ?? ""),
-    );
-    const topic = normalizeForMatch(q.topic ?? "");
-    let score = 0;
-    if (he.length >= 8 && (hay.includes(he) || he.includes(hay))) score = 1;
-    if (en.length >= 8 && (hay.includes(en) || en.includes(hay))) score = 1;
-    score = Math.max(score, tokenOverlap(hay, he), tokenOverlap(hay, en));
-    if (topic.length >= 4) score = Math.max(score, tokenOverlap(hay, topic) * 0.75);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = i;
-    }
-  }
-  // Conservative floor for fuzzy matches to avoid random false positives.
-  return bestScore >= 0.33 ? bestIndex : -1;
-}
-
-function normalizeForMatch(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/["'`“”״]/g, "")
-    .replace(/[.,!?;:()[\]{}\-–—]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenOverlap(a: string, b: string): number {
-  if (!a || !b) return 0;
-  const aTokens = new Set(a.split(" ").filter((t) => t.length >= 3));
-  const bTokens = new Set(b.split(" ").filter((t) => t.length >= 3));
-  if (aTokens.size === 0 || bTokens.size === 0) return 0;
-  let common = 0;
-  for (const t of bTokens) {
-    if (aTokens.has(t)) common += 1;
-  }
-  return common / bTokens.size;
-}
-
-function looksLikeInterviewClosing(text: string, locale: string): boolean {
-  const normalized = normalizeForMatch(text);
-  if (!normalized) return false;
-  // Phrase set is intentionally broad — false positives here are cheap
-  // (the gates in the caller require additional evidence before closing)
-  // while false negatives strand the student on the live screen forever.
-  const heSignals = [
-    "הראיון הסתיים",
-    "הראיון נגמר",
-    "סיימנו את הראיון",
-    "סיימנו",
-    "נסיים כאן",
-    "נסיים את הראיון",
-    "נעצור כאן",
-    "תודה רבה",
-    "תודה שהשתתפת",
-    "תודה שהשתתפתם",
-    "להתראות",
-    "יום טוב",
-    "המשך יום טוב",
-    "המשך יום נעים",
-    "בהצלחה בהמשך",
-    "בהצלחה",
-  ];
-  const enSignals = [
-    "the interview is over",
-    "the interview is done",
-    "the interview has ended",
-    "we'll wrap up here",
-    "let's wrap up",
-    "let's stop here",
-    "we'll stop here",
-    "thank you for joining",
-    "thanks for joining",
-    "thanks for sharing",
-    "goodbye",
-    "have a good day",
-    "have a great day",
-    "good luck",
-    "we're done",
-    "we are done",
-  ];
-  const signals = locale === "he" ? heSignals : enSignals;
-  return signals.some((sig) => normalized.includes(normalizeForMatch(sig)));
-}
-
-function looksLikePlannedQuestionTransition(text: string, locale: string): boolean {
-  const normalized = normalizeForMatch(text);
-  if (!normalized) return false;
-  const heSignals = [
-    "השאלה הבאה",
-    "נעבור לשאלה הבאה",
-    "בואי נעבור לשאלה הבאה",
-    "בוא נמשיך לשאלה הבאה",
-    "נעבור לנושא הבא",
-    "בואי נמשיך",
-    "בוא נמשיך",
-  ];
-  const enSignals = [
-    "next question",
-    "let's move to the next question",
-    "shall we move to the next question",
-    "let's move on",
-    "let's turn to",
-    "moving to the next topic",
-  ];
-  const signals = locale === "he" ? heSignals : enSignals;
-  return signals.some((sig) => normalized.includes(normalizeForMatch(sig)));
-}

@@ -26,8 +26,9 @@ export type InterviewEvent =
 export interface InterviewSessionState {
   state: InterviewRuntimeState;
   questionIndex: number;
+  // Captured once at mount from the `questions` option by design; the plan
+  // does not change during a session.
   totalQuestions: number;
-  questions: StudentInterviewQuestion[];
   startedAt: number | null;
   failureReason?: string;
 }
@@ -138,7 +139,6 @@ export function useInterviewSession({
     state: "idle" as InterviewRuntimeState,
     questionIndex: 0,
     totalQuestions: questions.length,
-    questions,
     startedAt: null,
   });
 
