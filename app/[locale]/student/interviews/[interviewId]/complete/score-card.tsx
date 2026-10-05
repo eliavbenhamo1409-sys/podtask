@@ -67,7 +67,7 @@ function ScoringProgress({ timedOut }: { timedOut: boolean }) {
       }}
     >
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <GlowOrb size={88} spinDuration={3} float />
+        <GlowOrb size={88} state="thinking" float />
       </div>
       <div style={{ fontSize: 18, fontWeight: 800 }}>{t("complete.scoring")}</div>
       <div style={{ minHeight: 24, marginTop: 8 }}>

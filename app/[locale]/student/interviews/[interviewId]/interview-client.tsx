@@ -42,9 +42,8 @@ import { Blobs } from "@/components/podtask/blobs";
 import { Badge, Chip } from "@/components/podtask/chip";
 import { BrandMark } from "@/components/podtask/brand-mark";
 import { Eyebrow } from "@/components/podtask/eyebrow";
-import { GlowOrb } from "@/components/podtask/glow-orb";
+import type { OrbState } from "@/components/podtask/glow-orb";
 import { MicButton } from "@/components/podtask/mic-button";
-import { Waveform } from "@/components/podtask/waveform";
 import {
   ArrowIcon,
   MicIcon,
@@ -81,7 +80,13 @@ import {
   looksLikePlannedQuestionTransition,
 } from "@/lib/realtime/host-text-heuristics";
 import type { StudentInterviewQuestion } from "@/lib/student/types";
-import { LevelBar, Spinner, TranscriptBubble, makeHalo } from "./interview-parts";
+import {
+  HostStage,
+  QuestionProgress,
+  Spinner,
+  StudentTile,
+  TranscriptBubble,
+} from "./interview-parts";
 
 // ---- Section: build/mode config ----
 
@@ -953,12 +958,50 @@ export function InterviewRoomClient({
           ? t("interview.finishInterview")
           : t("interview.nextQuestion");
 
-  const halo = makeHalo(hostLevel, userLevel);
+  // ---- Section: stage view state (presentational only) ----
+
+  const isLive = adapterMode === "openai";
+  const connecting =
+    session.state === "idle" || session.state === "connecting";
+  // Longer holds than `hostGlow`: the orb and the turn chips should not flip
+  // between "speaking" and "listening" on every breath.
+  const hostSpeaking = useHeldTrue(hostActive, 900);
+  const studentSpeaking = useHeldTrue(userActive, 400);
+  const mockStudentTurn =
+    session.state === "student_turn" || session.state === "student_recording";
+  const hostOrbState: OrbState = hostSpeaking
+    ? "speaking"
+    : connecting || processing
+      ? "thinking"
+      : wrappingUp || closingOrDone
+        ? "idle"
+        : isLive || mockStudentTurn
+          ? "listening"
+          : "idle";
+  const hostStatusLabel =
+    hostOrbState === "speaking"
+      ? t("interview.speaking")
+      : hostOrbState === "thinking"
+        ? connecting
+          ? t("interview.connecting")
+          : t("interview.thinking")
+        : hostOrbState === "listening"
+          ? t("interview.listening")
+          : t("interview.waiting");
+  const studentTurn = hostOrbState === "listening";
+  const totalQuestions = cappedQuestions.length;
+  const currentQuestion =
+    cappedQuestions[
+      Math.min(totalQuestions - 1, Math.max(0, session.questionIndex))
+    ];
 
   // ---- Section: JSX ----
 
   return (
-    <div className="screen" style={{ minHeight: "100vh", position: "relative" }}>
+    <div
+      className="screen-fade"
+      style={{ minHeight: "100vh", position: "relative" }}
+    >
       <Blobs variant="studio" />
 
       <header className="topbar topbar-room">
@@ -978,7 +1021,7 @@ export function InterviewRoomClient({
           </div>
         </div>
         <div className="row" style={{ gap: 12, flexShrink: 0 }}>
-          <Badge variant="pink">
+          <Badge variant="pink" className="room-rec">
             <span
               className="dot"
               style={{
@@ -1000,288 +1043,127 @@ export function InterviewRoomClient({
       </header>
 
       <div className="room-main">
-        <div
-          className="grid-room"
-          style={{ isolation: "isolate", paddingBottom: 8 }}
-        >
-          {/* HOST CARD */}
-          <motion.div
-            className="card-hero"
-            animate={{
-              boxShadow: hostActive
-                ? `0 24px 60px rgba(15,23,42,0.08), 0 0 ${12 + halo.host}px rgba(56,189,248,0.32), inset 0 1px 0 rgba(255,255,255,0.9)`
-                : "0 22px 60px rgba(15,23,42,0.07), inset 0 1px 0 rgba(255,255,255,0.9)",
-              borderColor: hostActive
-                ? "rgba(56,189,248,0.7)"
-                : "rgba(230,238,247,0.9)",
-            }}
-            transition={{ duration: 0.18 }}
-            style={{
-              padding: 32,
-              position: "relative",
-              overflow: "hidden",
-              height: 240,
-              border: "1.5px solid rgba(230,238,247,0.9)",
-            }}
-          >
-            <div
-              style={{
-                minHeight: 32,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
+        <div className="room-grid">
+          <HostStage
+            eyebrow={
               <Eyebrow icon={<SparkIcon size={14} />}>
                 {t("interview.aiHost")}
               </Eyebrow>
-            </div>
-            <div
-              className="row"
-              style={{ gap: 16, marginTop: 24, alignItems: "center" }}
-            >
-              <GlowOrb
-                size={96}
-                spinDuration={hostActive ? 4 : 12}
-                float={hostActive}
-              />
-              <div>
-                <div
+            }
+            chip={
+              <Chip variant={hostOrbState === "speaking" ? "cyan" : "default"}>
+                <span
+                  data-pulse={hostOrbState !== "idle" ? "true" : undefined}
                   style={{
-                    fontSize: 22,
-                    fontWeight: 800,
-                    letterSpacing: "-0.02em",
+                    display: "inline-flex",
+                    color:
+                      hostOrbState === "listening"
+                        ? "rgb(var(--pink-deep))"
+                        : "rgb(var(--cyan))",
                   }}
                 >
-                  {t("lobby.hostName")}
-                </div>
-                <div
-                  className="text-muted"
-                  style={{ fontSize: 13, marginTop: 2 }}
-                >
-                  {t("interview.podcastHost")}
-                </div>
-                <div
-                  style={{
-                    marginTop: 16,
-                    height: 40,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {hostActive ? (
-                    <Waveform />
-                  ) : (
-                    <span className="text-muted" style={{ fontSize: 12 }}>
-                      {session.state === "connecting"
-                        ? t("interview.connecting")
-                        : t("interview.hostTurn")}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* STUDENT CARD */}
-          <motion.div
-            className="card"
-            animate={{
-              boxShadow: userActive
-                ? `0 24px 60px rgba(15,23,42,0.08), 0 0 ${12 + halo.user}px rgba(251,113,133,0.32), inset 0 1px 0 rgba(255,255,255,0.9)`
-                : "0 22px 60px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
-              borderColor: userActive
-                ? "rgba(251,113,133,0.7)"
-                : "rgba(230,238,247,0.9)",
-            }}
-            transition={{ duration: 0.18 }}
-            style={{
-              padding: 32,
-              position: "relative",
-              overflow: "hidden",
-              height: 240,
-              border: "1.5px solid rgba(230,238,247,0.9)",
-            }}
+                  <span className="room-state-dot" />
+                </span>
+                {hostStatusLabel}
+              </Chip>
+            }
+            name={t("lobby.hostName")}
+            role={t("interview.podcastHost")}
+            orbState={hostOrbState}
+            level={isLive ? hostLevel : undefined}
           >
-            <div
-              style={{
-                minHeight: 32,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <Eyebrow showDot>{t("interview.you")}</Eyebrow>
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: 32,
-                insetInlineEnd: 32,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              {muted ? (
-                <Chip>
-                  <MicOffIcon size={12} /> {t("interview.muted")}
-                </Chip>
-              ) : userActive ? (
-                <Chip variant="pink">
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: "rgb(var(--pink-deep))",
-                      display: "inline-block",
-                      boxShadow: "0 0 6px rgb(var(--pink-deep))",
-                    }}
-                  />
-                  {t("interview.yourTurn")}
-                </Chip>
-              ) : (
-                <Chip>{t("interview.waiting")}</Chip>
-              )}
-            </div>
-            <div
-              className="row"
-              style={{ gap: 16, marginTop: 24, alignItems: "center" }}
-            >
+            {/* CAPTIONS, right under the orb. Live: the host's side of the
+                conversation in chronological order, auto-scrolled to the
+                latest line. The mock driver has no transcript, so it shows
+                the question on the table instead. */}
+            {isLive ? (
               <div
-                style={{
-                  width: 96,
-                  height: 96,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #FDA4AF, #7DD3FC)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontWeight: 800,
-                  fontSize: 32,
-                  boxShadow: "0 12px 30px rgba(14,165,233,0.2)",
-                }}
+                className="room-captions"
+                data-live={hostGlow ? "true" : undefined}
+                dir={locale === "he" ? "rtl" : "ltr"}
+                aria-label={t("interview.liveTranscript")}
               >
-                {studentInitial ?? ""}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 800,
-                    letterSpacing: "-0.02em",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {studentName || t("interview.youName")}
-                </div>
-                <div
-                  className="text-muted"
-                  style={{ fontSize: 13, marginTop: 2 }}
-                >
-                  {muted
-                    ? t("interview.muted")
-                    : userActive
-                      ? t("interview.shareThoughts")
-                      : t("interview.takeYourTime")}
-                </div>
-                <div
-                  style={{
-                    marginTop: 16,
-                    height: 40,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {userActive && !muted ? (
-                    <Waveform variant="pink" />
+                <div ref={transcriptScrollRef} className="room-captions-scroll">
+                  {transcript.length === 0 ? (
+                    <div className="room-captions-empty">
+                      {hostStatusLabel}
+                    </div>
                   ) : (
-                    <LevelBar level={muted ? 0 : userLevel} variant="pink" />
+                    transcript.map((entry) => (
+                      <TranscriptBubble
+                        key={entry.id}
+                        text={entry.text}
+                        isLive={!entry.final}
+                        hostLabel={t("interview.aiHost")}
+                      />
+                    ))
                   )}
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* LIVE TRANSCRIPT — replaces the old per-question card. Renders
-            the host's side of the conversation in chronological order,
-            with a soft glow when the host is currently speaking.
-            Auto-scrolls to the latest line. */}
-        {adapterMode === "openai" ? (
-          <motion.div
-            className="card"
-            animate={{
-              boxShadow: hostGlow
-                ? "0 30px 80px rgba(15,23,42,0.08), 0 0 28px rgba(244,114,182,0.28), inset 0 1px 0 rgba(255,255,255,0.9)"
-                : "0 30px 80px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.9)",
-            }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              marginTop: 64,
-              padding: "28px 32px",
-              borderRadius: 28,
-              position: "relative",
-              zIndex: 2,
-              background: "rgba(255,255,255,0.96)",
-              border: "1px solid rgba(226,232,240,0.9)",
-            }}
-            dir={locale === "he" ? "rtl" : "ltr"}
-          >
-            <div
-              className="between"
-              style={{ marginBottom: 18, alignItems: "center" }}
-            >
-              <Eyebrow icon={<SparkIcon size={14} />}>
-                {t("interview.liveTranscript")}
-              </Eyebrow>
-              <span
-                className="text-muted"
-                style={{ fontSize: 12, fontWeight: 600 }}
+            ) : (
+              <div
+                className="room-captions"
+                aria-label={t("interview.currentQuestion")}
               >
-                {t("interview.thinkAloud")}
-              </span>
-            </div>
+                <p className="room-question">{currentQuestion?.question}</p>
+              </div>
+            )}
+          </HostStage>
 
-            <div
-              ref={transcriptScrollRef}
-              style={{
-                maxHeight: 420,
-                minHeight: 220,
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: 14,
-                paddingInlineEnd: 4,
-                scrollBehavior: "smooth",
-              }}
-            >
-              {transcript.length === 0 ? (
-                <div
-                  className="text-muted"
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 500,
-                    paddingBlock: 24,
-                    textAlign: "center",
-                  }}
-                >
-                  {session.state === "connecting"
-                    ? t("interview.connecting")
-                    : t("interview.hostTurn")}
-                </div>
-              ) : (
-                transcript.map((entry) => (
-                  <TranscriptBubble
-                    key={entry.id}
-                    text={entry.text}
-                    isLive={!entry.final}
-                    hostLabel={t("interview.aiHost")}
-                  />
-                ))
-              )}
-            </div>
-          </motion.div>
-        ) : null}
+          <div className="room-side">
+            <StudentTile
+              eyebrow={<Eyebrow showDot>{t("interview.you")}</Eyebrow>}
+              chip={
+                muted ? (
+                  <Chip>
+                    <MicOffIcon size={12} /> {t("interview.muted")}
+                  </Chip>
+                ) : studentTurn ? (
+                  <Chip variant="pink">
+                    <span
+                      data-pulse="true"
+                      style={{
+                        display: "inline-flex",
+                        color: "rgb(var(--pink-deep))",
+                      }}
+                    >
+                      <span className="room-state-dot" />
+                    </span>
+                    {t("interview.yourTurn")}
+                  </Chip>
+                ) : (
+                  <Chip>{t("interview.waiting")}</Chip>
+                )
+              }
+              initial={studentInitial ?? ""}
+              name={studentName || t("interview.youName")}
+              status={
+                muted
+                  ? t("interview.muted")
+                  : studentSpeaking
+                    ? t("interview.shareThoughts")
+                    : studentTurn
+                      ? t("interview.takeYourTime")
+                      : t("interview.listening")
+              }
+              level={isLive ? userLevel : undefined}
+              speaking={isLive ? studentSpeaking : recording}
+              muted={muted}
+            />
+            <QuestionProgress
+              title={t("interview.questionOf", {
+                current: currentQuestionNumber,
+                total: totalQuestions,
+              })}
+              current={currentQuestionNumber}
+              total={totalQuestions}
+              allDone={wrappingUp || closingOrDone}
+              topicLabel={t("interview.currentTopic")}
+              topic={currentQuestion?.topic}
+              hint={t("interview.thinkAloud")}
+            />
+          </div>
+        </div>
       </div>
 
       {/* BOTTOM DOCK */}
@@ -1459,7 +1341,11 @@ export function InterviewRoomClient({
                       muted ? t("interview.unmute") : t("interview.mute")
                     }
                     aria-pressed={muted}
+                    className="room-mic"
                     style={{
+                      ["--lvl" as string]: muted
+                        ? 0
+                        : Math.min(1, userLevel * 4).toFixed(3),
                       width: 64,
                       height: 64,
                       borderRadius: "50%",

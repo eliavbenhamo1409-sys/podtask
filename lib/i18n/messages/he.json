@@ -219,8 +219,8 @@
     "questionOf": "שאלה {current} / {total}",
     "endEarly": "סיום מוקדם",
     "aiHost": "מנחה AI",
-    "speaking": "מדבר",
-    "listening": "מקשיב",
+    "speaking": "מדברת",
+    "listening": "מקשיבה",
     "podcastHost": "מנחה הפודקאסט שלך",
     "you": "את",
     "recording": "מקליט",
@@ -255,7 +255,7 @@
     "liveTranscript": "תמלול חי",
     "spaceToMute": "רווח להשתקה",
     "spaceToUnmute": "רווח להפעלה",
-    "connecting": "מתחבר…",
+    "connecting": "מתחברת…",
     "greetingLine": "המנחה מתחילה את הראיון. דברי בקול רגיל.",
     "continueToNext": "המשך לשאלה הבאה",
     "finishFromCard": "סיום ראיון",
@@ -268,7 +268,9 @@
     "replaceBannerTitle": "להחליף את שאלה {n}?",
     "replaceBannerBody": "אפשר להחליף שאלה פעם אחת בלבד בראיון. המנחה תשאל שאלה אחרת על אותו חומר, בלי פגיעה בציון.",
     "replaceConfirm": "החלפה",
-    "farewell": "המנחה נפרדת ממך — עוד רגע עוברים לסיכום."
+    "farewell": "המנחה נפרדת ממך — עוד רגע עוברים לסיכום.",
+    "currentTopic": "הנושא עכשיו",
+    "currentQuestion": "השאלה על השולחן"
   },
   "complete": {
     "sent": "נשלח",

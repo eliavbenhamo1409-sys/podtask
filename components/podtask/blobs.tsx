@@ -6,6 +6,7 @@ export function Blobs({ variant = "default" }: BlobsProps) {
   return (
     <div
       aria-hidden
+      className="blobs"
       style={{
         position: "fixed",
         inset: 0,

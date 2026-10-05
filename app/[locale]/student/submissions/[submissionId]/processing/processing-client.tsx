@@ -161,7 +161,7 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
             />
             <GlowOrb
               size={200}
-              spinDuration={10}
+              state="thinking"
               float
               style={{ position: "absolute", top: 40, insetInlineStart: 40 }}
             />

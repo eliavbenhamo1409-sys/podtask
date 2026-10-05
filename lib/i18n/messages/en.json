@@ -268,7 +268,9 @@
     "replaceBannerTitle": "Swap question {n}?",
     "replaceBannerBody": "You can swap a question once per interview. The host will ask a different question on the same material, with no effect on your score.",
     "replaceConfirm": "Swap",
-    "farewell": "The host is saying goodbye — wrapping up in a moment."
+    "farewell": "The host is saying goodbye — wrapping up in a moment.",
+    "currentTopic": "On the table",
+    "currentQuestion": "Current question"
   },
   "complete": {
     "sent": "Sent",

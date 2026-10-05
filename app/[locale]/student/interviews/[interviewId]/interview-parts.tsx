@@ -1,9 +1,218 @@
 /**
  * Hook-free presentational pieces of the live interview room, split out of
  * `interview-client.tsx` so the room component is only the stateful part.
+ * Styling lives under "Interview room" in `styles/globals.css`; everything
+ * here just maps props to data-attributes and CSS variables.
  */
+import type { CSSProperties, ReactNode } from "react";
+import { GlowOrb, type OrbState } from "@/components/podtask/glow-orb";
 
-/** One host turn in the live transcript panel. */
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+// Per-bar gain: a bell envelope with a little irregularity. Kept as a
+// literal so the server and client markup are byte-identical.
+const BAR_PROFILE = [
+  0.22, 0.34, 0.3, 0.52, 0.44, 0.7, 0.58, 0.86, 0.72, 0.95, 1, 0.9, 0.76,
+  0.88, 0.6, 0.72, 0.46, 0.54, 0.32, 0.36, 0.22,
+];
+
+/**
+ * A waveform driven by one scalar audio level. Without `level` (mock
+ * driver) the bars simply dance while `active`.
+ */
+export function VoiceBars({
+  level,
+  active,
+  variant = "cyan",
+  className,
+}: {
+  level?: number;
+  active: boolean;
+  variant?: "cyan" | "pink";
+  className?: string;
+}) {
+  const auto = level === undefined;
+  const style = auto
+    ? undefined
+    : ({
+        "--lvl": (active ? clamp01(level * 4) : 0).toFixed(3),
+      } as CSSProperties);
+  return (
+    <span
+      aria-hidden
+      className={["vbars", variant === "pink" ? "pink" : "", className ?? ""]
+        .filter(Boolean)
+        .join(" ")}
+      data-auto={auto ? "true" : undefined}
+      data-active={active ? "true" : undefined}
+      style={style}
+    >
+      {BAR_PROFILE.map((k, i) => (
+        <span key={i} style={{ "--k": k, "--i": i } as CSSProperties}>
+          <i />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** The host's stage: the orb, her name, a voice line and the captions. */
+export function HostStage({
+  eyebrow,
+  chip,
+  name,
+  role,
+  orbState,
+  level,
+  children,
+}: {
+  eyebrow: ReactNode;
+  chip: ReactNode;
+  name: string;
+  role: string;
+  orbState: OrbState;
+  /** Live host audio level; omit in the mock driver. */
+  level?: number;
+  /** Captions area, rendered under the voice line. */
+  children?: ReactNode;
+}) {
+  return (
+    <section className="room-stage fade-up" data-state={orbState}>
+      <div className="room-stage-top">
+        {eyebrow}
+        {chip}
+      </div>
+      <div className="room-stage-orb">
+        <GlowOrb className="room-orb" state={orbState} level={level} float />
+      </div>
+      <div className="room-stage-id">
+        <div className="room-stage-name">{name}</div>
+        <div className="room-stage-role text-muted">{role}</div>
+        <div className="room-stage-voice">
+          <VoiceBars level={level} active={orbState === "speaking"} />
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** The student's own tile: avatar that rings with their voice, mic meter. */
+export function StudentTile({
+  eyebrow,
+  chip,
+  initial,
+  name,
+  status,
+  level,
+  speaking,
+  muted,
+}: {
+  eyebrow: ReactNode;
+  chip: ReactNode;
+  initial: string;
+  name: string;
+  status: string;
+  /** Live mic level; omit in the mock driver. */
+  level?: number;
+  speaking: boolean;
+  muted: boolean;
+}) {
+  const ring = muted
+    ? 0
+    : level === undefined
+      ? speaking
+        ? 0.6
+        : 0
+      : clamp01(level * 4);
+  return (
+    <section
+      className="room-tile room-student fade-up"
+      data-active={speaking && !muted ? "true" : undefined}
+      data-muted={muted ? "true" : undefined}
+      style={
+        { "--lvl": ring.toFixed(3), animationDelay: "0.08s" } as CSSProperties
+      }
+    >
+      <div className="room-tile-top">
+        {eyebrow}
+        {chip}
+      </div>
+      <div className="room-student-body">
+        <div className="room-avatar">
+          <span>{initial}</span>
+        </div>
+        <div className="room-student-name">{name}</div>
+        <div className="room-student-status text-muted">{status}</div>
+      </div>
+      <VoiceBars
+        className="room-student-bars"
+        variant="pink"
+        level={level}
+        active={!muted && (level === undefined ? speaking : true)}
+      />
+    </section>
+  );
+}
+
+/** "Question 2 / 5" as a segmented rail plus the topic on the table. */
+export function QuestionProgress({
+  title,
+  current,
+  total,
+  allDone,
+  topicLabel,
+  topic,
+  hint,
+}: {
+  title: string;
+  /** 1-based. */
+  current: number;
+  total: number;
+  allDone: boolean;
+  topicLabel: string;
+  topic?: string;
+  hint?: ReactNode;
+}) {
+  return (
+    <section
+      className="room-tile fade-up"
+      style={{ animationDelay: "0.16s" }}
+    >
+      <div className="room-progress-title">{title}</div>
+      <div
+        className="room-progress"
+        role="progressbar"
+        aria-label={title}
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-valuenow={current}
+      >
+        {Array.from({ length: total }, (_, i) => (
+          <i
+            key={i}
+            className={
+              allDone || i < current - 1
+                ? "done"
+                : i === current - 1
+                  ? "current"
+                  : undefined
+            }
+          />
+        ))}
+      </div>
+      {topic ? (
+        <div className="room-topic">
+          <div className="room-topic-label">{topicLabel}</div>
+          <div className="room-topic-text">{topic}</div>
+        </div>
+      ) : null}
+      {hint ? <div className="room-hint">{hint}</div> : null}
+    </section>
+  );
+}
+
+/** One host turn in the live captions panel. */
 export function TranscriptBubble({
   text,
   isLive,
@@ -13,109 +222,13 @@ export function TranscriptBubble({
   isLive: boolean;
   hostLabel: string;
 }) {
-  const accentColor = "#0EA5E9";
-  const bubbleBg = "rgba(14,165,233,0.06)";
-  const bubbleBorder = "rgba(14,165,233,0.18)";
-  const labelBg = "rgba(14,165,233,0.10)";
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr",
-        columnGap: 12,
-        alignItems: "start",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: accentColor,
-          padding: "4px 10px",
-          borderRadius: 999,
-          background: labelBg,
-          whiteSpace: "nowrap",
-          alignSelf: "start",
-          marginTop: 4,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {hostLabel}
-        {isLive ? (
-          <span
-            aria-hidden
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: accentColor,
-              boxShadow: `0 0 6px ${accentColor}`,
-              animation: "pulse 1.1s ease-in-out infinite",
-            }}
-          />
-        ) : null}
-      </div>
-      <div
-        style={{
-          fontSize: 16,
-          lineHeight: 1.6,
-          fontWeight: 500,
-          color: "rgb(var(--ink))",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          padding: "10px 14px",
-          borderRadius: 14,
-          background: bubbleBg,
-          border: `1px solid ${bubbleBorder}`,
-        }}
-      >
+    <div className="room-line" data-live={isLive ? "true" : undefined}>
+      <span className="room-line-dot" aria-hidden />
+      <div className="room-line-text">
+        <span className="sr-only">{hostLabel}: </span>
         {text || "…"}
       </div>
-    </div>
-  );
-}
-
-/** Maps 0..1 audio levels to the extra glow radius (px) of each card. */
-export function makeHalo(hostLevel: number, userLevel: number) {
-  return {
-    host: Math.min(Math.round(hostLevel * 70), 70),
-    user: Math.min(Math.round(userLevel * 70), 70),
-  };
-}
-
-/** Thin horizontal meter for the student's mic level while idle. */
-export function LevelBar({
-  level,
-  variant,
-}: {
-  level: number;
-  variant: "cyan" | "pink";
-}) {
-  const fill = Math.min(1, Math.max(0, level * 4));
-  const color = variant === "pink" ? "#FB7185" : "#38BDF8";
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 120,
-        height: 4,
-        borderRadius: 2,
-        background: "rgba(148,163,184,0.18)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          width: `${fill * 100}%`,
-          height: "100%",
-          background: color,
-          transition: "width .12s linear",
-        }}
-      />
     </div>
   );
 }
