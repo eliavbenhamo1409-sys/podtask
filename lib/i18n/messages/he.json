@@ -292,10 +292,10 @@
     "levelMediumHigh": "רמה: בינונית-גבוהה",
     "levelHigh": "רמה: גבוהה",
     "summaryTitle": "סיכום",
-    "strengthsTitle": "חוזקות",
-    "weaknessesTitle": "נקודות לחיזוק",
+    "strengthsTitle": "חוזקות לשימור",
+    "weaknessesTitle": "נקודות לשיפור",
     "recommendationsTitle": "המלצות להמשך",
-    "rubricTitle": "מדדים",
+    "rubricTitle": "ציון לפי תחום",
     "rubricConceptual": "הבנה מושגית",
     "rubricReasoning": "חשיבה ביקורתית",
     "rubricCommunication": "תקשורת",
@@ -316,7 +316,12 @@
     "refresh": "רענון",
     "print": "הדפסת אישור",
     "questionsUnknown": "—",
-    "transcriptQuestion": "שאלה {n}"
+    "transcriptQuestion": "שאלה {n}",
+    "summaryAndRecsTitle": "סיכום והמלצות להמשך",
+    "recsMeta": "{count, plural, one {המלצה אחת} other {# המלצות}}",
+    "transcriptMeta": "{questions, plural, one {שאלה אחת} other {# שאלות}} · {messages, plural, one {הודעה אחת} other {# הודעות}}",
+    "transcriptSkipped": "דילגת על השאלה הזו",
+    "transcriptReplaced": "ביקשת שאלה אחרת — השאלה הוחלפה"
   },
   "history": {
     "title": "היסטוריית מטלות",

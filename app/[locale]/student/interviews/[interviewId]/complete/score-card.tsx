@@ -1,20 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/podtask/chip";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { GlowOrb } from "@/components/podtask/glow-orb";
 import { Steps } from "@/components/podtask/steps";
-import { SparkIcon } from "@/components/podtask/icons";
+import {
+  ArrowIcon,
+  CheckIcon,
+  ChevronIcon,
+  MicIcon,
+  SparkIcon,
+} from "@/components/podtask/icons";
 import {
   getInterviewTranscript,
   getReportForInterview,
 } from "@/lib/student/student-service";
+import { isHostDirective } from "@/lib/realtime/host-directives";
 import type { InterviewTranscript } from "@/lib/student/types";
 
 type ReportShape = Awaited<ReturnType<typeof getReportForInterview>>;
+type ReadyReport = NonNullable<ReportShape>;
+type Translate = ReturnType<typeof useTranslations>;
 
 interface ScoreCardProps {
   interviewId: string;
@@ -56,21 +73,13 @@ function ScoringProgress({ timedOut }: { timedOut: boolean }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card"
-      style={{
-        marginTop: 32,
-        padding: "32px 32px 28px",
-        textAlign: "center",
-        background: "rgba(246,251,255,0.7)",
-        borderRadius: 24,
-        boxShadow: "none",
-      }}
+      className="card report-scoring"
     >
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <GlowOrb size={88} state="thinking" float />
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+        <GlowOrb size={72} state="thinking" float />
       </div>
       <div style={{ fontSize: 18, fontWeight: 800 }}>{t("complete.scoring")}</div>
-      <div style={{ minHeight: 24, marginTop: 8 }}>
+      <div style={{ minHeight: 24, marginTop: 6 }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -89,11 +98,11 @@ function ScoringProgress({ timedOut }: { timedOut: boolean }) {
       <Steps
         current={step}
         items={SCORING_LABEL_KEYS.map((k) => t(k))}
-        className="mt-6"
+        className="mx-auto mt-5 max-w-2xl"
       />
       <div
         className="text-muted"
-        style={{ fontSize: 12, marginTop: 18, lineHeight: 1.6 }}
+        style={{ fontSize: 12, marginTop: 14, lineHeight: 1.6 }}
       >
         {timedOut ? t("complete.scoringSlow") : t("complete.scoringHint")}
       </div>
@@ -101,7 +110,7 @@ function ScoringProgress({ timedOut }: { timedOut: boolean }) {
         <button
           type="button"
           className="btn btn-secondary"
-          style={{ marginTop: 14 }}
+          style={{ marginTop: 12 }}
           onClick={() => window.location.reload()}
         >
           {t("complete.refresh")}
@@ -149,7 +158,7 @@ function CountUp({ value }: { value: number }) {
   return <>{reduce ? value : shown}</>;
 }
 
-const RUBRIC_KEYS: Array<{ key: keyof NonNullable<NonNullable<ReportShape>["rubric"]>; labelKey: string }> = [
+const RUBRIC_KEYS: Array<{ key: keyof NonNullable<ReadyReport["rubric"]>; labelKey: string }> = [
   { key: "conceptual", labelKey: "complete.rubricConceptual" },
   { key: "reasoning", labelKey: "complete.rubricReasoning" },
   { key: "communication", labelKey: "complete.rubricCommunication" },
@@ -207,10 +216,89 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
     };
   }, [interviewId]);
 
-  if (!report || report.status !== "ready") {
-    return <ScoringProgress timedOut={timedOut} />;
-  }
+  const ready = report && report.status === "ready" ? report : null;
+  const groups = transcript ? groupTranscript(transcript) : null;
+  const dir = locale === "he" ? "rtl" : "ltr";
 
+  const bars: DisclosureItem[] = [];
+  if (ready && (ready.summary || ready.recommendations.length > 0)) {
+    bars.push({
+      id: "insights",
+      icon: <SparkIcon size={16} />,
+      title: t("complete.summaryAndRecsTitle"),
+      teaser: ready.summary ?? undefined,
+      meta:
+        ready.recommendations.length > 0
+          ? t("complete.recsMeta", { count: ready.recommendations.length })
+          : undefined,
+      content: (
+        <div className="report-insights">
+          {ready.summary && (
+            <div>
+              <div className="report-label">{t("complete.summaryTitle")}</div>
+              <p dir="auto">{ready.summary}</p>
+            </div>
+          )}
+          {ready.recommendations.length > 0 && (
+            <div>
+              <div className="report-label">
+                {t("complete.recommendationsTitle")}
+              </div>
+              <Bullets items={ready.recommendations} />
+            </div>
+          )}
+        </div>
+      ),
+    });
+  }
+  bars.push({
+    id: "transcript",
+    icon: <MicIcon size={16} />,
+    title: t("complete.transcriptTitle"),
+    meta:
+      groups && groups.length > 0
+        ? t("complete.transcriptMeta", {
+            questions: groups.filter((g) => g.index !== null).length,
+            messages: groups.reduce(
+              (n, g) => n + g.entries.filter((e) => e.speaker !== "system").length,
+              0,
+            ),
+          })
+        : undefined,
+    content: (
+      <div dir={dir}>
+        {groups === null ? (
+          <div className="text-muted" style={{ fontSize: 14 }}>
+            {t("common.loading")}
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="text-muted" style={{ fontSize: 14, lineHeight: 1.7 }}>
+            {t("complete.transcriptEmpty")}
+          </div>
+        ) : (
+          <div className="transcript">
+            {groups.map((g, gi) => (
+              <TranscriptGroupBlock
+                key={`${g.planQuestionId ?? "x"}-${gi}`}
+                group={g}
+                t={t}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    ),
+  });
+
+  return (
+    <>
+      {ready ? <ReportCard report={ready} t={t} /> : <ScoringProgress timedOut={timedOut} />}
+      <DisclosureGroup items={bars} />
+    </>
+  );
+}
+
+function ReportCard({ report, t }: { report: ReadyReport; t: Translate }) {
   const level = report.overallLevel ?? "medium";
   const levelKey = LEVEL_KEYS[level as keyof typeof LEVEL_KEYS] ?? LEVEL_KEYS.medium;
   const score = typeof report.overallScore === "number"
@@ -218,19 +306,17 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
     : null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        key={report.id}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        style={{ marginTop: 32 }}
-      >
-        <div
-          className="card-hero card-pad"
-          style={{ padding: "32px 36px", borderRadius: 28, textAlign: "start" }}
-        >
-          <div className="between" style={{ alignItems: "flex-start" }}>
+    <motion.section
+      key={report.id}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="card-hero report-card"
+    >
+      <div className="report-score">
+        <div className="report-score-top">
+          <ScoreRing score={score} t={t} />
+          <div className="report-score-meta">
             <Eyebrow icon={<SparkIcon size={14} />}>
               {t("complete.scoreLabel")}
             </Eyebrow>
@@ -238,106 +324,22 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
               {t(levelKey)}
             </Badge>
           </div>
+        </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: 14,
-              marginTop: 18,
-            }}
-            aria-label={score !== null ? `${score} ${t("complete.outOf100")}` : undefined}
-          >
-            <div
-              aria-hidden
-              style={{
-                fontSize: 72,
-                fontWeight: 800,
-                letterSpacing: "-0.04em",
-                lineHeight: 1,
-                background: "linear-gradient(135deg, #38BDF8, #0EA5E9)",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {score !== null ? <CountUp value={score} /> : "—"}
-            </div>
-            <div
-              className="text-muted"
-              style={{ fontSize: 14, fontWeight: 600 }}
-            >
-              {t("complete.outOf100")}
-            </div>
-          </div>
-
-          {report.summary && (
-            <div style={{ marginTop: 24 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: "0.2em",
-                  color: "rgb(var(--ink-2))",
-                  marginBottom: 8,
-                }}
-              >
-                {t("complete.summaryTitle")}
-              </div>
-              <p
-                style={{
-                  fontSize: 15,
-                  lineHeight: 1.7,
-                  color: "rgb(var(--ink))",
-                }}
-              >
-                {report.summary}
-              </p>
-            </div>
-          )}
-
-          {report.rubric && (
-            <div
-              className="grid-stats-4"
-              style={{
-                marginTop: 24,
-                padding: "16px 20px",
-                background: "rgba(246,251,255,0.7)",
-                borderRadius: 16,
-              }}
-            >
+        {report.rubric && (
+          <div>
+            <div className="report-label">{t("complete.rubricTitle")}</div>
+            <div className="report-rubric">
               {RUBRIC_KEYS.map(({ key, labelKey }) => {
                 const val = report.rubric?.[key];
                 return (
                   <div key={key}>
-                    <div
-                      className="text-muted"
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: "0.18em",
-                      }}
-                    >
-                      {t(labelKey)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 800,
-                        marginTop: 4,
-                        letterSpacing: "-0.02em",
-                      }}
-                    >
-                      {typeof val === "number" ? val.toFixed(1) : "—"}
-                      {typeof val === "number" && (
-                        <span
-                          className="text-muted"
-                          style={{ fontSize: 12, fontWeight: 600, marginInlineStart: 4 }}
-                        >
-                          / {RUBRIC_MAX}
-                        </span>
-                      )}
+                    <div className="report-rubric-row">
+                      <span className="report-rubric-name">{t(labelKey)}</span>
+                      <span className="report-rubric-val">
+                        {typeof val === "number" ? val.toFixed(1) : "—"}
+                        {typeof val === "number" && <small>/ {RUBRIC_MAX}</small>}
+                      </span>
                     </div>
                     <div
                       className="meter"
@@ -360,48 +362,258 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
                 );
               })}
             </div>
-          )}
-
-          <div className="grid-feedback" style={{ marginTop: 28 }}>
-            <FeedbackColumn
-              titleKey="complete.strengthsTitle"
-              tone="cyan"
-              items={report.strengths}
-              t={t}
-            />
-            <FeedbackColumn
-              titleKey="complete.weaknessesTitle"
-              tone="pink"
-              items={report.weaknesses}
-              t={t}
-            />
-            <FeedbackColumn
-              titleKey="complete.recommendationsTitle"
-              tone="neutral"
-              items={report.recommendations}
-              t={t}
-            />
           </div>
-        </div>
+        )}
+      </div>
 
-        {transcript ? (
-          <TranscriptSection
-            transcript={transcript}
-            t={t}
-            locale={locale}
-          />
-        ) : null}
-      </motion.div>
-    </AnimatePresence>
+      <FeedbackList
+        tone="keep"
+        icon={<CheckIcon size={14} />}
+        title={t("complete.strengthsTitle")}
+        items={report.strengths}
+      />
+      <FeedbackList
+        tone="improve"
+        icon={
+          <ArrowIcon size={14} style={{ transform: "rotate(-90deg)" }} />
+        }
+        title={t("complete.weaknessesTitle")}
+        items={report.weaknesses}
+      />
+    </motion.section>
   );
 }
+
+const RING_R = 50;
+const RING_C = 2 * Math.PI * RING_R;
+
+/** The overall score as a ring that fills to score / 100. */
+function ScoreRing({ score, t }: { score: number | null; t: Translate }) {
+  const reduce = useReducedMotion();
+  const fraction = score === null ? 0 : Math.max(0, Math.min(100, score)) / 100;
+  return (
+    <div className="report-ring">
+      <svg viewBox="0 0 112 112" aria-hidden>
+        <defs>
+          <linearGradient id="report-ring-fill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#7DD3FC" />
+            <stop offset="100%" stopColor="#0EA5E9" />
+          </linearGradient>
+        </defs>
+        <circle
+          cx="56"
+          cy="56"
+          r={RING_R}
+          fill="none"
+          stroke="rgba(125,211,252,0.22)"
+          strokeWidth="8"
+        />
+        <motion.circle
+          cx="56"
+          cy="56"
+          r={RING_R}
+          fill="none"
+          stroke="url(#report-ring-fill)"
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={RING_C}
+          initial={{ strokeDashoffset: reduce ? RING_C * (1 - fraction) : RING_C }}
+          animate={{ strokeDashoffset: RING_C * (1 - fraction) }}
+          transition={{ duration: 1.1, ease: [0.2, 0.8, 0.2, 1] }}
+        />
+      </svg>
+      <div className="report-ring-value">
+        <span className="report-ring-num" aria-hidden>
+          {score !== null ? <CountUp value={score} /> : "—"}
+        </span>
+        <span className="report-ring-of" aria-hidden>
+          {t("complete.outOf100")}
+        </span>
+        {score !== null && (
+          <span className="sr-only">{`${score} ${t("complete.outOf100")}`}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FeedbackList({
+  tone,
+  icon,
+  title,
+  items,
+}: {
+  tone: "keep" | "improve";
+  icon: ReactNode;
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div className="report-list" data-tone={tone}>
+      <div className="report-list-head">
+        <span className="report-list-icon" aria-hidden>
+          {icon}
+        </span>
+        <h2 className="report-list-title">{title}</h2>
+        {items.length > 0 && (
+          <span className="report-count" aria-hidden>
+            {items.length}
+          </span>
+        )}
+      </div>
+      <Bullets items={items} />
+    </div>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="report-bullets">
+      {items.length === 0 ? (
+        <li className="is-empty">—</li>
+      ) : (
+        items.map((item, i) => (
+          <li key={`${i}-${item.slice(0, 12)}`} dir="auto">
+            {item}
+          </li>
+        ))
+      )}
+    </ul>
+  );
+}
+
+interface DisclosureItem {
+  id: string;
+  icon: ReactNode;
+  title: string;
+  teaser?: string;
+  meta?: string;
+  content: ReactNode;
+}
+
+/**
+ * A row of bars, each expanding its own panel below the row (one column on
+ * narrow screens). In the DOM every bar is followed by its own panel, so
+ * reading and focus order match an accordion; the row is built with grid
+ * placement. Closed panels stay in the DOM (inert) so printing shows
+ * everything; a panel that opens below the fold is scrolled into view.
+ */
+function DisclosureGroup({ items }: { items: DisclosureItem[] }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const reduce = useReducedMotion();
+  const bodies = useRef(new Map<string, HTMLDivElement>());
+  const revealTimer = useRef<number | undefined>(undefined);
+  const baseId = useId();
+
+  useEffect(() => () => window.clearTimeout(revealTimer.current), []);
+
+  // Measures the panel body, which keeps its full size while the panel row
+  // is still collapsed or growing.
+  const reveal = (id: string) => {
+    const el = bodies.current.get(id);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom <= window.innerHeight) return;
+    const fits = rect.height <= window.innerHeight - 180;
+    el.scrollIntoView({
+      block: fits ? "end" : "start",
+      behavior: reduce ? "auto" : "smooth",
+    });
+  };
+
+  const toggle = (id: string) => {
+    const next = !open[id];
+    setOpen((o) => ({ ...o, [id]: next }));
+    window.clearTimeout(revealTimer.current);
+    if (next) {
+      // Wait until the page has grown (the panel's transition, or one frame
+      // when motion is reduced) so the scroll is not clamped.
+      revealTimer.current = window.setTimeout(() => reveal(id), reduce ? 50 : 360);
+    }
+  };
+
+  return (
+    <div
+      className="report-bars"
+      style={{ "--bars": items.length } as CSSProperties}
+    >
+      {items.map((item) => {
+        const isOpen = !!open[item.id];
+        const barId = `${baseId}-${item.id}-bar`;
+        const panelId = `${baseId}-${item.id}-panel`;
+        return (
+          <Fragment key={item.id}>
+            <h2 className="disclosure-heading">
+              <button
+                type="button"
+                id={barId}
+                className="disclosure-bar"
+                data-open={isOpen}
+                aria-expanded={isOpen}
+                aria-controls={panelId}
+                onClick={() => toggle(item.id)}
+              >
+                <span className="disclosure-icon" aria-hidden>
+                  {item.icon}
+                </span>
+                <span className="disclosure-title">{item.title}</span>
+                {item.teaser && (
+                  <span className="disclosure-teaser" dir="auto" aria-hidden>
+                    {item.teaser}
+                  </span>
+                )}
+                {item.meta && <span className="disclosure-meta">{item.meta}</span>}
+                <span
+                  className="disclosure-chevron"
+                  aria-hidden
+                  style={item.meta || item.teaser ? undefined : { marginInlineStart: "auto" }}
+                >
+                  <ChevronIcon />
+                </span>
+              </button>
+            </h2>
+            <div
+              id={panelId}
+              role="region"
+              aria-labelledby={barId}
+              className="disclosure-panel"
+              data-open={isOpen}
+              inert={!isOpen}
+            >
+              <div className="disclosure-inner">
+                <div
+                  className="disclosure-body"
+                  ref={(el) => {
+                    if (el) bodies.current.set(item.id, el);
+                    else bodies.current.delete(item.id);
+                  }}
+                >
+                  {item.content}
+                </div>
+              </div>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+type TranscriptSpeaker = "ai_host" | "student" | "system";
 
 interface TranscriptGroup {
   planQuestionId: string | null;
   topic: string;
   question: string;
   index: number | null;
-  messages: { speaker: "ai_host" | "student" | "system"; content: string }[];
+  entries: { speaker: TranscriptSpeaker; content: string }[];
+}
+
+/** "skipped_question:N" / "replaced_question:N" markers saved by the room. */
+function noteKeyFor(content: string): string | null {
+  if (/^skipped_question:\d+$/.test(content)) return "complete.transcriptSkipped";
+  if (/^replaced_question:\d+$/.test(content)) return "complete.transcriptReplaced";
+  return null;
 }
 
 function groupTranscript(transcript: InterviewTranscript): TranscriptGroup[] {
@@ -414,6 +626,11 @@ function groupTranscript(transcript: InterviewTranscript): TranscriptGroup[] {
   const order: string[] = [];
 
   for (const m of transcript.messages) {
+    // Skip / swap directives are steering text for the host, not speech, and
+    // system rows are only shown when they are a known marker.
+    if (m.speaker === "system" ? !noteKeyFor(m.content) : isHostDirective(m.content)) {
+      continue;
+    }
     const key = m.planQuestionId ?? "__unanchored__";
     if (!groups.has(key)) {
       const meta = m.planQuestionId ? planIndex.get(m.planQuestionId) : null;
@@ -422,11 +639,11 @@ function groupTranscript(transcript: InterviewTranscript): TranscriptGroup[] {
         topic: meta?.topic ?? "",
         question: meta?.question ?? "",
         index: meta?.index ?? null,
-        messages: [],
+        entries: [],
       });
       order.push(key);
     }
-    groups.get(key)!.messages.push({ speaker: m.speaker, content: m.content });
+    groups.get(key)!.entries.push({ speaker: m.speaker, content: m.content });
   }
 
   // Reorder so groups that match a plan question come first in plan order,
@@ -438,63 +655,9 @@ function groupTranscript(transcript: InterviewTranscript): TranscriptGroup[] {
         (groups.get(a)!.index as number) - (groups.get(b)!.index as number),
     );
   const unanchored = order.filter((k) => groups.get(k)?.index === null);
-  return [...anchored, ...unanchored].map((k) => groups.get(k)!);
-}
-
-function TranscriptSection({
-  transcript,
-  t,
-  locale,
-}: {
-  transcript: InterviewTranscript;
-  t: ReturnType<typeof useTranslations>;
-  locale: string;
-}) {
-  const groups = groupTranscript(transcript).filter((g) => g.messages.length > 0);
-  const dir = locale === "he" ? "rtl" : "ltr";
-
-  return (
-    <div
-      className="card"
-      style={{
-        marginTop: 28,
-        padding: "28px 32px",
-        borderRadius: 24,
-        background: "rgba(255,255,255,0.94)",
-      }}
-      dir={dir}
-    >
-      <Eyebrow icon={<SparkIcon size={14} />}>
-        {t("complete.transcriptTitle")}
-      </Eyebrow>
-
-      {groups.length === 0 ? (
-        <div
-          className="text-muted"
-          style={{ marginTop: 18, fontSize: 14, lineHeight: 1.7 }}
-        >
-          {t("complete.transcriptEmpty")}
-        </div>
-      ) : (
-        <div
-          style={{
-            marginTop: 22,
-            display: "flex",
-            flexDirection: "column",
-            gap: 28,
-          }}
-        >
-          {groups.map((g, gi) => (
-            <TranscriptGroupBlock
-              key={`${g.planQuestionId ?? "x"}-${gi}`}
-              group={g}
-              t={t}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return [...anchored, ...unanchored]
+    .map((k) => groups.get(k)!)
+    .filter((g) => g.entries.length > 0);
 }
 
 function TranscriptGroupBlock({
@@ -502,7 +665,7 @@ function TranscriptGroupBlock({
   t,
 }: {
   group: TranscriptGroup;
-  t: ReturnType<typeof useTranslations>;
+  t: Translate;
 }) {
   const heading =
     group.index !== null
@@ -512,176 +675,26 @@ function TranscriptGroupBlock({
       : t("complete.transcriptTitle");
 
   return (
-    <div>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 800,
-          letterSpacing: "0.04em",
-          color: "rgb(var(--ink))",
-          marginBottom: 10,
-        }}
-      >
-        {heading}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {group.messages.map((m, i) => (
-          <TranscriptBubble key={i} speaker={m.speaker} text={m.content} t={t} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TranscriptBubble({
-  speaker,
-  text,
-  t,
-}: {
-  speaker: "ai_host" | "student" | "system";
-  text: string;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const isHost = speaker === "ai_host";
-  const isStudent = speaker === "student";
-  const labelKey = isHost
-    ? "complete.transcriptHost"
-    : isStudent
-      ? "complete.transcriptYou"
-      : null;
-  const accent = isHost
-    ? "#0EA5E9"
-    : isStudent
-      ? "#F472B6"
-      : "rgb(var(--ink-2))";
-  const accentSoft = isHost
-    ? "rgba(14,165,233,0.10)"
-    : isStudent
-      ? "rgba(244,114,182,0.12)"
-      : "rgba(148,163,184,0.10)";
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "auto 1fr",
-        columnGap: 12,
-        alignItems: "start",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: accent,
-          padding: "3px 9px",
-          borderRadius: 999,
-          background: accentSoft,
-          alignSelf: "start",
-          marginTop: 2,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {labelKey ? t(labelKey) : speaker}
-      </div>
-      <div
-        style={{
-          fontSize: 15,
-          lineHeight: 1.65,
-          fontWeight: 500,
-          color: "rgb(var(--ink))",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {text}
-      </div>
-    </div>
-  );
-}
-
-function FeedbackColumn({
-  titleKey,
-  tone,
-  items,
-  t,
-}: {
-  titleKey: string;
-  tone: "cyan" | "pink" | "neutral";
-  items: string[];
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const accent =
-    tone === "cyan"
-      ? "rgb(var(--cyan))"
-      : tone === "pink"
-        ? "rgb(var(--pink-deep))"
-        : "rgb(var(--ink-2))";
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: "0.2em",
-          color: accent,
-          marginBottom: 10,
-        }}
-      >
-        {t(titleKey)}
-      </div>
-      <ul
-        style={{
-          listStyle: "none",
-          padding: 0,
-          margin: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {items.length === 0 ? (
-          <li
-            className="text-muted"
-            style={{ fontSize: 13, lineHeight: 1.6 }}
-          >
-            —
-          </li>
-        ) : (
-          items.map((item, i) => (
-            <li
-              key={`${i}-${item.slice(0, 12)}`}
-              style={{
-                fontSize: 13,
-                lineHeight: 1.6,
-                paddingInlineStart: 14,
-                position: "relative",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  insetInlineStart: 0,
-                  top: 9,
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: accent,
-                }}
-              />
-              {item}
-            </li>
-          ))
-        )}
-      </ul>
+    <div className="transcript-group">
+      <h3 className="transcript-group-title">{heading}</h3>
+      {group.entries.map((e, i) => {
+        if (e.speaker === "system") {
+          const noteKey = noteKeyFor(e.content);
+          return noteKey ? (
+            <div key={i} className="transcript-note">
+              {t(noteKey)}
+            </div>
+          ) : null;
+        }
+        return (
+          <div key={i} className="transcript-msg" data-speaker={e.speaker}>
+            <span className="transcript-who">
+              {t(e.speaker === "ai_host" ? "complete.transcriptHost" : "complete.transcriptYou")}
+            </span>
+            <div dir="auto">{e.content}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

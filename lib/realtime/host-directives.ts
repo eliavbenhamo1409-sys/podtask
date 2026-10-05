@@ -12,6 +12,19 @@
 
 export type FarewellReason = "tool" | "watchdog" | "student_end" | "skipped_last";
 
+/** Prefixes every skip / swap directive starts with, in either locale. */
+const DIRECTIVE_PREFIXES = ["[הודעת מערכת]", "[SYSTEM NOTE]"] as const;
+
+/**
+ * True for a skip / swap directive. They travel as user text items, so one
+ * can end up stored as a "student" transcript line; the report screen hides
+ * them.
+ */
+export function isHostDirective(text: string): boolean {
+  const t = text.trimStart();
+  return DIRECTIVE_PREFIXES.some((p) => t.startsWith(p));
+}
+
 export function buildSkipDirective(
   locale: string,
   questionNumber: number,

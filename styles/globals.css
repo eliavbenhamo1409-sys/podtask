@@ -1150,6 +1150,782 @@
     transition: width 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
+  /* ---- Completion report (interviews/:id/complete) ----
+     Fits one laptop screen: a compact header with the actions, the report
+     card (score ring, score by area, keep / improve lists) and a row of
+     bars that expand the long parts (summary + recommendations, transcript)
+     below them. Opening a bar is what makes the page scroll. */
+  .report-page {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 24px 40px 28px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px 24px;
+  }
+  .report-page > * {
+    grid-column: 1 / -1;
+  }
+  .report-page > .report-head {
+    grid-column: 1;
+  }
+  .report-page > .report-actions {
+    grid-column: 2;
+    flex-wrap: nowrap;
+  }
+  .report-head {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+  }
+  .report-check {
+    position: relative;
+    flex: none;
+    width: 52px;
+    height: 52px;
+  }
+  .report-confetti {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .report-check-ring {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(125, 211, 252, 0.45);
+    animation: pulse-ring 2.4s ease-out infinite;
+  }
+  .report-check-ring.is-pink {
+    border-color: rgba(253, 164, 175, 0.45);
+    animation-delay: 1.2s;
+  }
+  .report-check-disc {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+      0 12px 28px rgba(14, 165, 233, 0.35),
+      inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  }
+  .report-title {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 2px;
+  }
+  .report-sub {
+    color: rgb(var(--muted));
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  /* Every item starts with a dot; the wrapper clips the dot of whichever
+     item starts a line, so wrapped lines never begin with a separator. */
+  .report-meta-wrap {
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .report-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    margin: 0;
+    margin-inline-start: -13px;
+    font-size: 12.5px;
+  }
+  .report-meta > div {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+  .report-meta > div::before {
+    content: "";
+    flex: none;
+    align-self: center;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgb(var(--muted) / 0.5);
+    margin-inline-end: 4px;
+  }
+  .report-meta dt {
+    color: rgb(var(--muted));
+    font-weight: 600;
+  }
+  .report-meta dd {
+    margin: 0;
+    font-weight: 800;
+    color: rgb(var(--ink-2));
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  .report-card {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    padding: 22px;
+    border-radius: 28px;
+  }
+  .report-score {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 2px 4px 0;
+  }
+  .report-score-top {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .report-score-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .report-ring {
+    position: relative;
+    flex: none;
+    width: 112px;
+    height: 112px;
+  }
+  .report-ring svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+  .report-ring-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .report-ring-num {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .report-ring-of {
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgb(var(--muted));
+  }
+  .report-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    color: rgb(var(--ink-2));
+    margin-bottom: 10px;
+  }
+  .report-rubric {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .report-rubric-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .report-rubric-name {
+    font-weight: 700;
+    color: rgb(var(--ink-2));
+  }
+  .report-rubric-val {
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .report-rubric-val small {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgb(var(--muted));
+    margin-inline-start: 2px;
+  }
+  .report-rubric .meter {
+    margin-top: 6px;
+  }
+
+  .report-list {
+    --accent: rgb(var(--cyan));
+    --accent-ink: #0369a1;
+    --accent-soft: rgba(125, 211, 252, 0.2);
+    padding: 16px 18px 18px;
+    border-radius: 20px;
+    border: 1px solid rgba(230, 238, 247, 0.85);
+    background: linear-gradient(
+      180deg,
+      rgba(240, 249, 255, 0.85),
+      rgba(255, 255, 255, 0.7)
+    );
+  }
+  .report-list[data-tone="improve"] {
+    --accent: rgb(var(--pink-deep));
+    --accent-ink: #be123c;
+    --accent-soft: rgba(253, 164, 175, 0.24);
+    background: linear-gradient(
+      180deg,
+      rgba(255, 241, 245, 0.8),
+      rgba(255, 255, 255, 0.7)
+    );
+  }
+  .report-list-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .report-list-icon {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+  }
+  .report-list-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-ink);
+  }
+  .report-count {
+    margin-inline-start: auto;
+    flex: none;
+    min-width: 24px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(230, 238, 247, 0.95);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    color: rgb(var(--muted));
+    font-variant-numeric: tabular-nums;
+  }
+  .report-bullets {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .report-bullets li {
+    position: relative;
+    padding-inline-start: 16px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: rgb(var(--ink));
+  }
+  .report-bullets li::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 2px;
+    top: 0.62em;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent, rgb(var(--cyan)));
+  }
+  .report-bullets li.is-empty {
+    padding-inline-start: 0;
+    color: rgb(var(--muted));
+  }
+  .report-bullets li.is-empty::before {
+    display: none;
+  }
+
+  .report-scoring {
+    padding: 24px 28px;
+    text-align: center;
+    background: rgba(246, 251, 255, 0.8);
+    border-radius: 28px;
+  }
+
+  /* Expanding bars: the bars share row 1 (--bars columns) and each panel
+     spans the full width in the rows below, in DOM order. */
+  .report-bars {
+    display: grid;
+    grid-template-columns: repeat(var(--bars, 1), minmax(0, 1fr));
+    column-gap: 12px;
+  }
+  .disclosure-heading {
+    grid-row: 1;
+    margin: 0;
+    min-width: 0;
+    font: inherit;
+    container-type: inline-size;
+  }
+  .disclosure-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 54px;
+    padding: 9px 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(230, 238, 247, 0.9);
+    box-shadow: var(--shadow-card);
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition:
+      background 0.2s,
+      border-color 0.2s;
+  }
+  .disclosure-bar:hover,
+  .disclosure-bar[data-open="true"] {
+    border-color: rgb(var(--cyan-soft));
+  }
+  .disclosure-bar[data-open="true"] {
+    background: rgba(240, 249, 255, 0.95);
+  }
+  .disclosure-bar:focus-visible {
+    outline: 2px solid rgb(var(--cyan));
+    outline-offset: 2px;
+  }
+  .disclosure-icon {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(125, 211, 252, 0.2);
+    color: #0369a1;
+  }
+  .disclosure-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .disclosure-teaser {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    color: rgb(var(--muted));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: opacity 0.2s;
+  }
+  .disclosure-bar[data-open="true"] .disclosure-teaser {
+    opacity: 0;
+  }
+  .disclosure-meta {
+    margin-inline-start: auto;
+    flex: 0 3 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: rgba(246, 251, 255, 0.95);
+    border: 1px solid rgba(230, 238, 247, 0.95);
+    font-size: 12px;
+    font-weight: 700;
+    color: rgb(var(--muted));
+    white-space: nowrap;
+  }
+  .disclosure-chevron {
+    flex: none;
+    display: flex;
+    color: rgb(var(--muted));
+    transition: rotate 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .disclosure-bar[data-open="true"] .disclosure-chevron {
+    rotate: 180deg;
+    color: #0369a1;
+  }
+  .disclosure-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.34s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .disclosure-panel[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+  .disclosure-inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .disclosure-body {
+    margin-top: 12px;
+    padding: 20px 22px 22px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(230, 238, 247, 0.95);
+    scroll-margin-top: 170px;
+    scroll-margin-bottom: 16px;
+  }
+  /* A narrow bar puts its count under the title instead of cutting either. */
+  @container (max-width: 460px) {
+    .disclosure-bar {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "icon title chev"
+        "icon meta chev";
+      column-gap: 12px;
+      row-gap: 1px;
+    }
+    .disclosure-icon {
+      grid-area: icon;
+    }
+    .disclosure-title {
+      grid-area: title;
+      white-space: normal;
+    }
+    .disclosure-teaser {
+      display: none;
+    }
+    .disclosure-meta {
+      grid-area: meta;
+      justify-self: start;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      font-weight: 600;
+    }
+    .disclosure-chevron {
+      grid-area: chev;
+    }
+  }
+
+  .report-insights {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 28px;
+  }
+  .report-insights p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: rgb(var(--ink));
+  }
+
+  /* Transcript, as a conversation: host on the start side, student on the
+     end side. */
+  .transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .transcript-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .transcript-group-title {
+    font-size: 12.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: rgb(var(--ink-2));
+    margin: 0 0 2px;
+  }
+  .transcript-msg {
+    max-width: min(760px, 80%);
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: rgb(var(--ink));
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .transcript-msg[data-speaker="ai_host"] {
+    align-self: flex-start;
+    background: rgba(14, 165, 233, 0.08);
+    border-end-start-radius: 6px;
+  }
+  .transcript-msg[data-speaker="student"] {
+    align-self: flex-end;
+    background: rgba(244, 114, 182, 0.1);
+    border-end-end-radius: 6px;
+  }
+  .transcript-who {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+    color: #0369a1;
+  }
+  .transcript-msg[data-speaker="student"] .transcript-who {
+    color: #be185d;
+  }
+  .transcript-note {
+    align-self: center;
+    padding: 4px 12px;
+    border-radius: 99px;
+    background: rgba(148, 163, 184, 0.12);
+    font-size: 12px;
+    font-weight: 600;
+    color: rgb(var(--muted));
+  }
+
+  /* Large screens: same layout, more room to breathe. */
+  @media (min-width: 1600px) and (min-height: 940px) {
+    .report-page {
+      max-width: 1440px;
+      padding-top: 40px;
+      row-gap: 22px;
+    }
+    .report-check {
+      width: 60px;
+      height: 60px;
+    }
+    .report-title {
+      font-size: 30px;
+    }
+    .report-sub {
+      font-size: 15px;
+    }
+    .report-meta {
+      font-size: 13.5px;
+    }
+    .report-card {
+      grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      padding: 28px;
+    }
+    .report-ring {
+      width: 136px;
+      height: 136px;
+    }
+    .report-ring-num {
+      font-size: 46px;
+    }
+    .report-ring-of,
+    .report-label {
+      font-size: 12px;
+    }
+    .report-rubric {
+      gap: 14px;
+    }
+    .report-rubric-row {
+      font-size: 14px;
+    }
+    .report-list {
+      padding: 20px 22px 22px;
+    }
+    .report-list-title {
+      font-size: 15px;
+    }
+    .report-bullets {
+      gap: 11px;
+    }
+    .report-bullets li {
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .disclosure-bar {
+      min-height: 60px;
+    }
+    .disclosure-title {
+      font-size: 16px;
+    }
+    .disclosure-teaser {
+      font-size: 14px;
+    }
+  }
+  /* Short laptop screens: tighten so the whole report still fits (the
+     two-row card under 1100px wide needs it a little earlier). */
+  @media (min-width: 901px) and (max-height: 780px),
+    (min-width: 901px) and (max-width: 1100px) and (max-height: 860px) {
+    .report-page {
+      padding-top: 16px;
+      padding-bottom: 20px;
+      row-gap: 12px;
+    }
+    .report-check {
+      width: 46px;
+      height: 46px;
+    }
+    .report-title {
+      font-size: 23px;
+    }
+    .report-card {
+      padding: 18px;
+      gap: 16px;
+    }
+    .report-ring {
+      width: 96px;
+      height: 96px;
+    }
+    .report-ring-num {
+      font-size: 32px;
+    }
+    .report-list {
+      padding: 14px 16px 16px;
+    }
+    .report-bullets {
+      gap: 7px;
+    }
+    .report-bullets li {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .disclosure-bar {
+      min-height: 50px;
+      padding-block: 7px;
+    }
+  }
+  @media (max-width: 1100px) {
+    .report-card {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .report-score {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      gap: 32px;
+    }
+    .report-score-top {
+      flex: none;
+    }
+    .report-score > div:last-child {
+      flex: 1;
+      min-width: 0;
+    }
+    .report-rubric {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 28px;
+    }
+  }
+  @media (max-width: 900px) {
+    .report-page {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .report-page > .report-actions {
+      grid-column: 1;
+      justify-content: flex-start;
+    }
+    .report-insights {
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    /* Bars stack, each panel right under its own bar. */
+    .report-bars {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .disclosure-heading {
+      grid-row: auto;
+    }
+    .report-bars > .disclosure-heading ~ .disclosure-heading {
+      margin-top: 10px;
+    }
+    .disclosure-body {
+      scroll-margin-top: 140px;
+    }
+  }
+  @media (max-width: 720px) {
+    .report-page {
+      padding: 18px 16px 40px;
+    }
+    .report-page > .report-actions {
+      flex-wrap: wrap;
+    }
+    .report-actions .btn {
+      padding: 12px 18px;
+    }
+    .report-head {
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .report-check {
+      width: 42px;
+      height: 42px;
+    }
+    .report-title {
+      font-size: 22px;
+    }
+    .report-card {
+      grid-template-columns: 1fr;
+      padding: 16px;
+      border-radius: 24px;
+    }
+    .report-score {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 18px;
+    }
+    .report-rubric {
+      grid-template-columns: 1fr;
+    }
+    .disclosure-body {
+      padding: 16px;
+    }
+    .transcript-msg {
+      max-width: 92%;
+    }
+  }
+  @media print {
+    .report-page {
+      padding: 0;
+      max-width: none;
+    }
+    .report-check-ring,
+    .report-confetti {
+      display: none !important;
+    }
+    /* Flat colours on paper: blurred shadows and text-clipped gradients do
+       not survive every PDF renderer. */
+    .report-page *,
+    .report-page *::before {
+      box-shadow: none !important;
+    }
+    .report-ring-num {
+      background: none !important;
+      color: #0284c7 !important;
+    }
+    .disclosure-panel {
+      grid-template-rows: 1fr !important;
+    }
+    .disclosure-chevron,
+    .disclosure-teaser {
+      display: none !important;
+    }
+  }
+
   /* ---- Aria orb (components/podtask/glow-orb.tsx) ----
      Liquid light in a glass sphere. Sized by --orb-size, driven by
      data-state and --orb-level. Only rotate / scale / translate / opacity

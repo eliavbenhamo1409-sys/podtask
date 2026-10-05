@@ -292,10 +292,10 @@
     "levelMediumHigh": "Level: medium-high",
     "levelHigh": "Level: high",
     "summaryTitle": "Summary",
-    "strengthsTitle": "Strengths",
-    "weaknessesTitle": "Weaknesses",
+    "strengthsTitle": "Strengths to keep",
+    "weaknessesTitle": "Points to improve",
     "recommendationsTitle": "Recommendations",
-    "rubricTitle": "Rubric",
+    "rubricTitle": "Score by area",
     "rubricConceptual": "Conceptual",
     "rubricReasoning": "Reasoning",
     "rubricCommunication": "Communication",
@@ -316,7 +316,12 @@
     "refresh": "Refresh",
     "print": "Print confirmation",
     "questionsUnknown": "—",
-    "transcriptQuestion": "Question {n}"
+    "transcriptQuestion": "Question {n}",
+    "summaryAndRecsTitle": "Summary & next steps",
+    "recsMeta": "{count, plural, one {# recommendation} other {# recommendations}}",
+    "transcriptMeta": "{questions, plural, one {# question} other {# questions}} · {messages, plural, one {# message} other {# messages}}",
+    "transcriptSkipped": "You skipped this question",
+    "transcriptReplaced": "You asked for a different question, so it was swapped"
   },
   "history": {
     "title": "Assignment history",

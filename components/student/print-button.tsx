@@ -3,11 +3,17 @@
 import { PrinterIcon } from "@/components/podtask/icons";
 
 /** Opens the browser print dialog; print styles live in globals.css. */
-export function PrintButton({ label }: { label: string }) {
+export function PrintButton({
+  label,
+  className = "btn btn-secondary btn-lg row",
+}: {
+  label: string;
+  className?: string;
+}) {
   return (
     <button
       type="button"
-      className="btn btn-secondary btn-lg row"
+      className={className}
       style={{ gap: 8 }}
       onClick={() => window.print()}
     >
