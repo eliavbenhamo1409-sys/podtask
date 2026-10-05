@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "@/lib/i18n/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { clearCachedProfileInitial } from "@/lib/student/profile-initial";
 import { MOCK_MODE } from "@/lib/env";
 
 export function LogoutButton({ label }: { label: string }) {
@@ -18,6 +19,7 @@ export function LogoutButton({ label }: { label: string }) {
     } catch {
       // Fall through: the login screen clears any stale session cookie.
     } finally {
+      clearCachedProfileInitial();
       router.push("/login");
     }
   }

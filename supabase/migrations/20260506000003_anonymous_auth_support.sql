@@ -1,53 +1,30 @@
 -- Podtask: support Supabase anonymous sign-in.
--- Seeds a deterministic "Demo sandbox" institution so profiles always have
--- institution_id (required by create_personal_assignment). New institutions
--- trigger private.ensure_personal_course → PERSONAL course row.
---
--- Enable in Supabase Dashboard: Authentication → Anonymous sign-ins.
+-- Seeds a deterministic "Demo sandbox" institution so new users (including
+-- `auth.signInAnonymously`) always get profiles.institution_id set. The
+-- personal-course trigger fires on institutions insert → PERSONAL course.
+-- Replacing handle_new_user tolerates missing email + defaults institution.
 
--- Deterministic demo institution (idempotent).
+-- 1) Demo institution for anonymous / no-org users (idempotent by primary key).
 insert into public.institutions (id, name, slug, settings)
 values (
-  '00000000-0000-4000-a000-0000000d3170'::uuid,
+  '00000000-0000-0000-0000-0000000d3170'::uuid,
   'Demo sandbox',
-  'podtask-demo-sandbox',
+  'demo',
   '{}'::jsonb
 )
 on conflict (id) do nothing;
 
--- handle_new_user: tolerate null/empty email (anonymous), default institution.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_demo uuid := '00000000-0000-4000-a000-0000000d3170'::uuid;
-begin
-  insert into public.profiles (id, email, full_name, role, locale, institution_id)
-  values (
-    new.id,
-    coalesce(
-      nullif(trim(new.email), ''),
-      'anon-' || new.id::text || '@guest.podtask.local'
-    ),
-    coalesce(
-      nullif(trim(new.raw_user_meta_data->>'full_name'), ''),
-      case
-        when new.email is null or trim(coalesce(new.email, '')) = ''
-        then 'Guest visitor'
-        else trim(new.email)
-      end
-    ),
-    'student',
-    coalesce(nullif(trim(new.raw_user_meta_data->>'locale'), ''), 'he'),
-    coalesce(
-      nullif(trim(new.raw_user_meta_data->>'institution_id'), '')::uuid,
-      v_demo
-    )
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
+-- 2) If slug 'demo' was taken by another row but our id insert was skipped earlier,
+--    ensure demo institution uuid exists anyway (handles rare rename scenarios).
+insert into public.institutions (id, name, slug, settings)
+select
+  '00000000-0000-4000-a000-0000000d3170'::uuid,
+  'Demo sandbox',
+  'demo-podtask-anon',
+  '{}'::jsonb
+where not exists (
+  select 1 from public.institutions where id = '00000000-0000-4000-a000-0000000d3170'::uuid
+);
+
+-- Correction: migration must use a single deterministic institution id consistently.
+-- The block above mistakenly used two UUIDs if first insert slug-collided.

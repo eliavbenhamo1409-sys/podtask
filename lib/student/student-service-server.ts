@@ -6,9 +6,14 @@
  *
  * The function names mirror `student-service.ts` so callers can switch
  * import paths without changing the call sites.
+ *
+ * Every read is wrapped in React `cache`: within one request, repeated calls
+ * with the same arguments (e.g. generateMetadata + page) hit Supabase once.
+ * `startInterview` is a write and is deliberately NOT cached.
  */
 import "server-only";
 
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient as createServerSb } from "@/lib/supabase/server";
@@ -54,37 +59,40 @@ async function shouldUseRealBackend(id?: string): Promise<boolean> {
 
 type SbClient = SupabaseClient<Database>;
 
-async function getSb(): Promise<SbClient> {
+// One Supabase client per request. React `cache` scopes memoisation to the
+// current server request, so generateMetadata() and the page body — which
+// often ask for the same data — share one client and one set of queries.
+const getSb = cache(async (): Promise<SbClient> => {
   return (await createServerSb()) as unknown as SbClient;
-}
+});
 
-export async function getStudentDashboard(): Promise<StudentDashboard> {
+export const getStudentDashboard = cache(async function getStudentDashboard(): Promise<StudentDashboard> {
   if (await shouldUseRealBackend()) {
     const sb = await getSb();
     const real = await getStudentDashboardSb(sb);
     if (real) return real;
   }
   return makeMockDashboard();
-}
+});
 
-export async function getStudentProfile(): Promise<StudentProfile> {
+export const getStudentProfile = cache(async function getStudentProfile(): Promise<StudentProfile> {
   if (await shouldUseRealBackend()) {
     const sb = await getSb();
     const real = await getStudentProfileSb(sb);
     if (real) return real;
   }
   return MOCK_PROFILE;
-}
+});
 
-export async function getStudentAssignments(): Promise<StudentAssignment[]> {
+export const getStudentAssignments = cache(async function getStudentAssignments(): Promise<StudentAssignment[]> {
   if (await shouldUseRealBackend()) {
     const sb = await getSb();
     return await getStudentAssignmentsSb(sb);
   }
   return MOCK_ASSIGNMENTS;
-}
+});
 
-export async function getAssignmentById(
+export const getAssignmentById = cache(async function getAssignmentById(
   assignmentId: string,
 ): Promise<StudentAssignment | null> {
   if (await shouldUseRealBackend(assignmentId)) {
@@ -92,17 +100,17 @@ export async function getAssignmentById(
     return await getAssignmentByIdSb(sb, assignmentId);
   }
   return findMockAssignment(assignmentId) ?? null;
-}
+});
 
-export async function getStudentHistory(): Promise<StudentHistoryEntry[]> {
+export const getStudentHistory = cache(async function getStudentHistory(): Promise<StudentHistoryEntry[]> {
   if (await shouldUseRealBackend()) {
     const sb = await getSb();
     return await getStudentHistorySb(sb);
   }
   return MOCK_HISTORY;
-}
+});
 
-export async function getSubmissionLobby(submissionId: string): Promise<{
+export const getSubmissionLobby = cache(async function getSubmissionLobby(submissionId: string): Promise<{
   submission: StudentSubmission;
   assignment: StudentAssignment;
   interview: StudentInterview;
@@ -120,9 +128,9 @@ export async function getSubmissionLobby(submissionId: string): Promise<{
     : undefined;
   if (!interview) return null;
   return { submission, assignment, interview };
-}
+});
 
-export async function getInterviewWithAssignment(interviewId: string) {
+export const getInterviewWithAssignment = cache(async function getInterviewWithAssignment(interviewId: string) {
   if (await shouldUseRealBackend(interviewId)) {
     const sb = await getSb();
     return await getInterviewWithAssignmentSb(sb, interviewId);
@@ -132,7 +140,7 @@ export async function getInterviewWithAssignment(interviewId: string) {
   const assignment = findMockAssignment(interview.assignmentId);
   if (!assignment) return null;
   return { interview, assignment };
-}
+});
 
 export async function startInterview(
   interviewId: string,
@@ -152,7 +160,7 @@ export async function startInterview(
   return interview;
 }
 
-export async function getReportForInterview(
+export const getReportForInterview = cache(async function getReportForInterview(
   interviewId: string,
 ): Promise<StudentReport | null> {
   if (await shouldUseRealBackend(interviewId)) {
@@ -160,4 +168,4 @@ export async function getReportForInterview(
     return await getReportForInterviewSb(sb, interviewId);
   }
   return null;
-}
+});
