@@ -6,9 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@/lib/i18n/navigation";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Steps } from "@/components/podtask/steps";
-import { Eyebrow } from "@/components/podtask/eyebrow";
 import { GlowOrb } from "@/components/podtask/glow-orb";
-import { CheckIcon, SparkIcon } from "@/components/podtask/icons";
+import { CheckIcon } from "@/components/podtask/icons";
 import {
   observeSubmissionProcessing,
   prepareSubmission,
@@ -125,10 +124,7 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
           className="card-hero card-pad-lg"
           style={{ padding: "56px 48px", textAlign: "center" }}
         >
-          <Eyebrow icon={<SparkIcon size={14} />}>
-            {t("processing.eyebrow")}
-          </Eyebrow>
-          <h1 className="title" style={{ fontSize: 32, marginTop: 16 }}>
+          <h1 className="title" style={{ fontSize: 32 }}>
             {t("processing.title")}
           </h1>
           <p className="subtitle">{t("processing.subtitle")}</p>

@@ -143,7 +143,6 @@
     "errorGeneric": "Upload failed. Please try again or contact your lecturer."
   },
   "processing": {
-    "eyebrow": "AI is preparing",
     "title": "One moment — the host is reading your work.",
     "subtitle": "Usually takes about thirty seconds.",
     "step1": "Reading your assignment…",
