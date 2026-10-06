@@ -72,6 +72,10 @@ import {
   OpenAIRealtimeAdapter,
   type RealtimeToolCall,
 } from "@/lib/realtime/openai-adapter";
+import {
+  CaptionPacer,
+  defaultCharsPerSecond,
+} from "@/lib/realtime/caption-pacer";
 import { createRealtimeSession } from "@/lib/realtime/realtime-client";
 import {
   closingStrength,
@@ -121,6 +125,32 @@ interface InterviewRoomClientProps {
 
 function makeTurnId(): string {
   return `t_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+}
+
+// The host's measured speaking rate (characters per second) survives the
+// session so the very first caption of the next interview is already in
+// step with her voice. Per-device convenience only; any failure is ignored.
+const CAPTION_RATE_KEY = "podtask.captionRate";
+
+function loadCaptionRate(locale: string): number | null {
+  try {
+    const raw = window.localStorage.getItem(`${CAPTION_RATE_KEY}.${locale}`);
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= 5 && n <= 30 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCaptionRate(locale: string, charsPerSecond: number): void {
+  try {
+    window.localStorage.setItem(
+      `${CAPTION_RATE_KEY}.${locale}`,
+      charsPerSecond.toFixed(2),
+    );
+  } catch {
+    /* private mode / quota; the default guess is fine */
+  }
 }
 
 export function InterviewRoomClient({
@@ -211,6 +241,9 @@ export function InterviewRoomClient({
   // Whether host audio is currently playing, so every close path can wait
   // for the goodbye to finish instead of cutting it off.
   const hostSpeakingRef = useRef(false);
+  // Caption pacing (see the transcript section below).
+  const pacerRef = useRef<CaptionPacer | null>(null);
+  const captionRevisionRef = useRef(-1);
 
   useEffect(() => {
     askedQuestionIndexesRef.current = new Set();
@@ -237,15 +270,50 @@ export function InterviewRoomClient({
       window.clearTimeout(finalAnswerWatchdogRef.current);
       finalAnswerWatchdogRef.current = null;
     }
+    // A fresh caption pacer is created lazily for the new interview.
+    pacerRef.current = null;
+    captionRevisionRef.current = -1;
   }, [interviewId]);
 
   // ---- Section: transcript buffer ----
 
   // Rolling on-screen transcript of the HOST's speech (student answers are
-  // persisted to the DB but not rendered). Each entry is one "turn": delta
-  // events append to the trailing un-finalized turn, and a new turn starts
-  // once the previous one was finalized.
+  // persisted to the DB but not rendered). The server sends the text well
+  // ahead of the voice, so it goes through `CaptionPacer`, which reveals it
+  // word by word in step with the audio (see that module for the why). Each
+  // entry is one response ("turn"); `final` flips once the turn was spoken
+  // and shown in full.
   const [transcript, setTranscript] = useState<TurnEntry[]>([]);
+
+  const getPacer = useCallback(() => {
+    if (!pacerRef.current) {
+      pacerRef.current = new CaptionPacer({
+        charsPerSecond:
+          loadCaptionRate(locale) ?? defaultCharsPerSecond(locale),
+        makeId: makeTurnId,
+      });
+    }
+    return pacerRef.current;
+  }, [locale]);
+
+  // Push the pacer's view into React state, only when it actually changed.
+  const syncCaptions = useCallback(() => {
+    const pacer = pacerRef.current;
+    if (!pacer || pacer.revision === captionRevisionRef.current) return;
+    captionRevisionRef.current = pacer.revision;
+    setTranscript(pacer.snapshot());
+  }, []);
+
+  // Reveal loop: a few times a second, advance the captions along the
+  // host's speaking clock. Live sessions only.
+  useEffect(() => {
+    if (adapterMode !== "openai") return;
+    const id = window.setInterval(() => {
+      const pacer = pacerRef.current;
+      if (pacer && pacer.tick(performance.now())) syncCaptions();
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [adapterMode, syncCaptions]);
 
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -255,18 +323,12 @@ export function InterviewRoomClient({
   }, [transcript]);
 
   const appendTranscriptDelta = useCallback(
-    (delta: string) => {
+    (delta: string, responseId?: string) => {
       if (!delta) return;
-      setTranscript((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && !last.final) {
-          const updated: TurnEntry = { ...last, text: last.text + delta };
-          return [...prev.slice(0, -1), updated];
-        }
-        return [...prev, { id: makeTurnId(), text: delta, final: false }];
-      });
+      getPacer().pushDelta(delta, performance.now(), responseId);
+      syncCaptions();
     },
-    [],
+    [getPacer, syncCaptions],
   );
 
   // ---- Section: closing (every path ends in closeNow) ----
@@ -441,30 +503,14 @@ export function InterviewRoomClient({
     trySend();
   }, []);
 
+  // The final text of a turn. Both `transcript.done` and `item.done` land
+  // here; the pacer dedupes them and keeps revealing at the voice's pace.
   const finalizeTranscript = useCallback(
-    (finalText: string) => {
-      setTranscript((prev) => {
-        const last = prev[prev.length - 1];
-        // Case 1: there's a live (un-finalized) host entry — promote it
-        // to final, preferring the freshly-supplied text.
-        if (last && !last.final) {
-          const updated: TurnEntry = {
-            ...last,
-            text: finalText || last.text,
-            final: true,
-          };
-          return [...prev.slice(0, -1), updated];
-        }
-        if (!finalText) return prev;
-        // Case 2: duplicate final host entry.
-        if (last && last.final && last.text.trim() === finalText.trim()) {
-          return prev;
-        }
-        // Case 3: a normal new final entry.
-        return [...prev, { id: makeTurnId(), text: finalText, final: true }];
-      });
+    (finalText: string, responseId?: string) => {
+      getPacer().finalize(finalText, performance.now(), responseId);
+      syncCaptions();
     },
-    [],
+    [getPacer, syncCaptions],
   );
 
   // ---- Section: drivers (mock FSM / OpenAI WebRTC) ----
@@ -681,14 +727,29 @@ export function InterviewRoomClient({
             }
           },
           onUserMessageDone: handleStudentUtterance,
-          onAssistantTranscriptDelta: (delta) => {
-            appendTranscriptDelta(delta);
+          onAssistantTranscriptDelta: (delta, responseId) => {
+            appendTranscriptDelta(delta, responseId);
           },
-          onAssistantTranscriptDone: (text) => {
-            finalizeTranscript(text);
+          onAssistantTranscriptDone: (text, responseId) => {
+            finalizeTranscript(text, responseId);
+          },
+          // Playback edges pace the captions: the voice started / is over.
+          onAssistantPlaybackStart: (responseId) => {
+            getPacer().playbackStarted(performance.now(), responseId);
+            syncCaptions();
+          },
+          onAssistantPlaybackStop: (responseId) => {
+            const pacer = getPacer();
+            pacer.playbackStopped(performance.now(), responseId);
+            syncCaptions();
+            saveCaptionRate(localeRef.current, pacer.charsPerSecond);
           },
           onUserTranscriptDone: handleStudentUtterance,
-          onAssistantAudioLevel: setHostLevel,
+          onAssistantAudioLevel: (level) => {
+            setHostLevel(level);
+            // "Is the voice audible right now" for the caption clock.
+            getPacer().noteLevel(level, performance.now());
+          },
           onUserAudioLevel: setUserLevel,
           onToolCall: (call: RealtimeToolCall) => {
             if (call.name === "finish_interview") {
@@ -776,6 +837,8 @@ export function InterviewRoomClient({
     interviewId,
     appendTranscriptDelta,
     finalizeTranscript,
+    getPacer,
+    syncCaptions,
     beginFarewell,
     sendFarewellResponse,
     closeAfterHostSilent,

@@ -35,14 +35,28 @@ export interface OpenAIRealtimeCallbacks {
   onAssistantMessageDone?: (text: string) => void;
   /** Final user input transcript item (after server VAD commit). */
   onUserMessageDone?: (text: string) => void;
-  /** Streaming chunk of the assistant's spoken text. */
-  onAssistantTranscriptDelta?: (text: string) => void;
+  /**
+   * Streaming chunk of the assistant's spoken text. Arrives at generation
+   * speed, well ahead of the audio; `responseId` groups chunks per response.
+   */
+  onAssistantTranscriptDelta?: (text: string, responseId?: string) => void;
   /** Streaming chunk of the user's transcribed speech. */
   onUserTranscriptDelta?: (text: string) => void;
   /** Final committed user transcript (per item). */
   onUserTranscriptDone?: (text: string) => void;
   /** Final committed assistant transcript (per item). */
-  onAssistantTranscriptDone?: (text: string) => void;
+  onAssistantTranscriptDone?: (text: string, responseId?: string) => void;
+  /**
+   * WebRTC-only playback signals (`output_audio_buffer.*`): the server began
+   * streaming a response's audio to the client, and the buffer drained
+   * (`stopped`) or was cut off (`cleared`). Unlike `onAssistantAudioStart` /
+   * `onAssistantAudioEnd`, which follow generation, these follow playback.
+   */
+  onAssistantPlaybackStart?: (responseId?: string) => void;
+  onAssistantPlaybackStop?: (
+    responseId: string | undefined,
+    reason: "stopped" | "cleared",
+  ) => void;
   /** Tool/function call dispatched by the model (call once arguments are complete). */
   onToolCall?: (call: RealtimeToolCall) => void;
   /** Per-RAF RMS [0,1] of the assistant audio. */
@@ -82,6 +96,7 @@ export interface RealtimeServerEvent {
   event_id?: string;
   item?: RealtimeItem;
   item_id?: string;
+  response_id?: string;
   output_index?: number;
   transcript?: string;
   delta?: string;
@@ -470,6 +485,12 @@ export class OpenAIRealtimeAdapter {
         break;
       }
       case "response.output_audio.delta":
+        // NOTE (live run, 2026-10-06): over WebRTC this event is NOT
+        // delivered on the data channel — audio travels on the media track
+        // — so this gate never opens and onAssistantAudioStart/End never
+        // fire. Real playback edges are `output_audio_buffer.started` /
+        // `.stopped` (onAssistantPlaybackStart/Stop below). Left as is so
+        // the close paths keep their current timing; see the room.
         if (!this.assistantAudioActive) {
           this.assistantAudioActive = true;
           this.callbacks.onAssistantAudioStart?.();
@@ -484,10 +505,21 @@ export class OpenAIRealtimeAdapter {
           this.callbacks.onAssistantAudioEnd?.();
         }
         break;
+      case "output_audio_buffer.started":
+        this.callbacks.onAssistantPlaybackStart?.(responseIdOf(event));
+        break;
+      case "output_audio_buffer.stopped":
+        this.callbacks.onAssistantPlaybackStop?.(responseIdOf(event), "stopped");
+        break;
+      case "output_audio_buffer.cleared":
+        this.callbacks.onAssistantPlaybackStop?.(responseIdOf(event), "cleared");
+        break;
       case "response.output_audio_transcript.delta":
       case "response.audio_transcript.delta": {
         const delta = typeof event.delta === "string" ? event.delta : "";
-        if (delta) this.callbacks.onAssistantTranscriptDelta?.(delta);
+        if (delta) {
+          this.callbacks.onAssistantTranscriptDelta?.(delta, responseIdOf(event));
+        }
         break;
       }
       case "response.output_audio_transcript.done":
@@ -498,7 +530,9 @@ export class OpenAIRealtimeAdapter {
             : typeof (event as { text?: string }).text === "string"
               ? (event as { text?: string }).text!
               : "";
-        if (text) this.callbacks.onAssistantTranscriptDone?.(text);
+        if (text) {
+          this.callbacks.onAssistantTranscriptDone?.(text, responseIdOf(event));
+        }
         break;
       }
       case "conversation.item.input_audio_transcription.delta": {
@@ -655,6 +689,12 @@ export class OpenAIRealtimeAdapter {
         break;
     }
   }
+}
+
+function responseIdOf(event: RealtimeServerEvent): string | undefined {
+  return typeof event.response_id === "string" && event.response_id
+    ? event.response_id
+    : undefined;
 }
 
 function extractItemText(item: RealtimeItem): string {
