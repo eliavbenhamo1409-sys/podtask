@@ -170,7 +170,7 @@ export function FileDropzone({
         style={{ marginTop: 32, cursor: "pointer" }}
         role="button"
         tabIndex={0}
-        aria-label={`${t("upload.dropHere")} — ${t("upload.orClick")}`}
+        aria-label={`${t("upload.dropHere")}, ${t("upload.orClick")}`}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {

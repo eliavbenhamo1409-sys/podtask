@@ -56,7 +56,7 @@ export const MOCK_ASSIGNMENTS: StudentAssignment[] = [
   },
   {
     id: "a3",
-    title: "דינמיקת זורמים — דוח מעבדה 3",
+    title: "דינמיקת זורמים: דוח מעבדה 3",
     courseName: "פיזיקה 220",
     courseCode: "PHY220",
     lecturerName: "Prof. Benjamin Park",
@@ -72,7 +72,7 @@ export const MOCK_ASSIGNMENTS: StudentAssignment[] = [
   },
   {
     id: "a4",
-    title: "אסטרטגיית שיווק — חקר מקרה",
+    title: "אסטרטגיית שיווק: חקר מקרה",
     courseName: "מנהל עסקים 180",
     courseCode: "MGT180",
     lecturerName: "Dr. Yael Brenner",
@@ -121,7 +121,7 @@ export const MOCK_HISTORY: StudentHistoryEntry[] = [
   {
     assignmentId: "a4",
     interviewId: "int-a4",
-    title: "אסטרטגיית שיווק — חקר מקרה",
+    title: "אסטרטגיית שיווק: חקר מקרה",
     courseName: "מנהל עסקים 180",
     uploadedAt: "2026-04-28T18:32:00.000Z",
     interviewedAt: "2026-04-28T19:00:00.000Z",
@@ -158,9 +158,9 @@ export const MOCK_INTERVIEW_QUESTIONS = [
     topic: "פתיחה",
     topicEn: "Opening",
     question:
-      "בואי נתחיל ברוחב — מה משך אותך לכלכלה התנהגותית בתור עדשה למדיניות אקלים?",
+      "בואי נתחיל ברוחב. מה משך אותך לכלכלה התנהגותית בתור עדשה למדיניות אקלים?",
     questionEn:
-      "Let's start broad — what drew you to behavioral economics as a lens for climate policy?",
+      "Let's start broad. What drew you to behavioral economics as a lens for climate policy?",
     recommendedSeconds: 120,
   },
   {
