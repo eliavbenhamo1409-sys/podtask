@@ -82,6 +82,30 @@ both (or only to the one whose runtime needs it) and keep the mock branch.
 - Web deploy: `scripts/deploy.sh` (clean tree → check → push `main` → wait for
   Vercel). Edge functions: Supabase MCP, see `supabase/functions/README.md`.
 
+## 6b. Performance model (2026-10-06)
+
+Supabase (Postgres + Auth) lives in Tokyo. Every round trip to it costs
+~200 ms from Vercel's default Washington region and ~300 ms from a browser in
+Israel, so latency is dominated by the NUMBER OF SEQUENTIAL ROUND TRIPS, not by
+rendering. Rules that keep pages fast:
+
+- `vercel.json` pins server functions to `hnd1` (Tokyo): a query is ~5 ms
+  there. The visitor pays one Tokyo round trip per page instead of one per
+  query. (Moving the Supabase project to eu-central would make everything
+  faster for Israeli users; it needs a new project + data migration.)
+- Identity is read from the session JWT and verified locally with the
+  project's ES256 key (`auth.getClaims()`), both in the middleware and in
+  `student-service-supabase.ts`; never `auth.getUser()` on a hot path.
+- Server reads in `student-service-server.ts` are wrapped in React `cache()`
+  so `generateMetadata` and the page body share one fetch per request.
+- Independent queries go through `Promise.all`; `getAssignmentByIdSb` queries
+  by id instead of loading every assignment.
+- The browser never calls Supabase just to render chrome: the top-bar avatar
+  initial is cached per tab (`lib/student/profile-initial.ts`), and the login
+  screen loads the Supabase SDK after first paint.
+- The root layout preconnects to the Supabase origin for the browser-side
+  calls (upload, realtime session, transcript).
+
 ## 7. Known issues (audit, 2026-10-01) — not fixed, owner decision needed
 
 1. ~~Repo ≠ production for two edge functions.~~ Reconciled 2026-10-01

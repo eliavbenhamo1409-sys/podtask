@@ -26,6 +26,18 @@ import type {
 
 type SbClient = SupabaseClient<Database>;
 
+/**
+ * The signed-in student's id, read from the session JWT and verified locally
+ * against the project's public signing key (JWKS, cached) — no round trip to
+ * Supabase Auth per call. It is only used to scope filters; every query is
+ * still authorised by RLS with the same token.
+ */
+async function currentUserIdSb(sb: SbClient): Promise<string | null> {
+  const { data } = await sb.auth.getClaims();
+  const sub = data?.claims?.sub;
+  return typeof sub === "string" && sub.length > 0 ? sub : null;
+}
+
 function deriveBadge(
   s: StudentAssignmentStatus,
 ): "next" | "todo" | "done" {
@@ -99,22 +111,29 @@ function rowToProfile(row: ProfileRow): StudentProfile {
 export async function getStudentProfileSb(
   sb: SbClient,
 ): Promise<StudentProfile | null> {
-  const { data: user } = await sb.auth.getUser();
-  if (!user.user) return null;
+  const userId = await currentUserIdSb(sb);
+  if (!userId) return null;
   const { data, error } = await sb
     .from("profiles")
     .select("*, institution:institutions ( name )")
-    .eq("id", user.user.id)
+    .eq("id", userId)
     .maybeSingle();
   if (error || !data) return null;
   return rowToProfile(data as unknown as ProfileRow);
 }
 
-export async function getStudentAssignmentsSb(
+/**
+ * Loads the student's view of published assignments. With `assignmentId` the
+ * three queries (the assignment, the student's submission for it, their
+ * interview for it) are independent and go out in parallel — one round trip
+ * instead of loading every assignment just to pick one.
+ */
+async function loadAssignmentsSb(
   sb: SbClient,
+  opts: { assignmentId?: string } = {},
 ): Promise<StudentAssignment[]> {
-  const { data: user } = await sb.auth.getUser();
-  if (!user.user) return [];
+  const userId = await currentUserIdSb(sb);
+  if (!userId) return [];
 
   type AssignmentRow = {
     id: string;
@@ -148,41 +167,56 @@ export async function getStudentAssignmentsSb(
     duration_seconds: number | null;
   };
 
-  const { data: assignmentsRaw, error } = await sb
-    .from("assignments")
-    .select(
-      `id, title, description, instructions, due_at, interview_duration_minutes, status,
-       course:courses ( id, name, code, lecturer_name )`,
-    )
-    .eq("status", "published")
-    .order("due_at", { ascending: true });
-  if (error || !assignmentsRaw) return [];
-  const assignments = assignmentsRaw as unknown as AssignmentRow[];
+  const assignmentsQuery = () => {
+    const q = sb
+      .from("assignments")
+      .select(
+        `id, title, description, instructions, due_at, interview_duration_minutes, status,
+         course:courses ( id, name, code, lecturer_name )`,
+      )
+      .eq("status", "published");
+    return opts.assignmentId
+      ? q.eq("id", opts.assignmentId)
+      : q.order("due_at", { ascending: true });
+  };
+  const relatedQueries = (ids: string[]) =>
+    Promise.all([
+      sb
+        .from("submissions")
+        .select("id, assignment_id, status, file_path, original_filename, file_size_bytes, submitted_at")
+        .in("assignment_id", ids)
+        .eq("student_id", userId),
+      sb
+        .from("interviews")
+        .select("id, assignment_id, status, current_state, started_at, completed_at, duration_seconds")
+        .in("assignment_id", ids)
+        .eq("student_id", userId),
+    ]);
 
-  const ids = assignments.map((a) => a.id);
-  if (ids.length === 0) return [];
-
-  // Independent of each other — fetch in parallel (one round trip, not two).
-  const [{ data: submissionsRaw }, { data: interviewsRaw }] = await Promise.all([
-    sb
-      .from("submissions")
-      .select("id, assignment_id, status, file_path, original_filename, file_size_bytes, submitted_at")
-      .in("assignment_id", ids)
-      .eq("student_id", user.user.id),
-    sb
-      .from("interviews")
-      .select("id, assignment_id, status, current_state, started_at, completed_at, duration_seconds")
-      .in("assignment_id", ids)
-      .eq("student_id", user.user.id),
-  ]);
-  const submissions = (submissionsRaw ?? []) as unknown as SubmissionRow[];
+  let assignments: AssignmentRow[];
+  let submissions: SubmissionRow[];
+  let interviews: InterviewRow[];
+  if (opts.assignmentId) {
+    const [{ data: assignmentsRaw, error }, [{ data: subs }, { data: ints }]] =
+      await Promise.all([assignmentsQuery(), relatedQueries([opts.assignmentId])]);
+    if (error || !assignmentsRaw) return [];
+    assignments = assignmentsRaw as unknown as AssignmentRow[];
+    submissions = (subs ?? []) as unknown as SubmissionRow[];
+    interviews = (ints ?? []) as unknown as InterviewRow[];
+  } else {
+    const { data: assignmentsRaw, error } = await assignmentsQuery();
+    if (error || !assignmentsRaw) return [];
+    assignments = assignmentsRaw as unknown as AssignmentRow[];
+    const ids = assignments.map((a) => a.id);
+    if (ids.length === 0) return [];
+    const [{ data: subs }, { data: ints }] = await relatedQueries(ids);
+    submissions = (subs ?? []) as unknown as SubmissionRow[];
+    interviews = (ints ?? []) as unknown as InterviewRow[];
+  }
 
   const subByAssignment = new Map(
     submissions.map((s) => [s.assignment_id, s] as const),
   );
-
-  const interviews = (interviewsRaw ?? []) as unknown as InterviewRow[];
-
   const intByAssignment = new Map(
     interviews.map((i) => [i.assignment_id, i] as const),
   );
@@ -214,6 +248,12 @@ export async function getStudentAssignmentsSb(
   });
 }
 
+export async function getStudentAssignmentsSb(
+  sb: SbClient,
+): Promise<StudentAssignment[]> {
+  return loadAssignmentsSb(sb);
+}
+
 export async function getStudentDashboardSb(
   sb: SbClient,
 ): Promise<StudentDashboard | null> {
@@ -231,8 +271,8 @@ export async function getAssignmentByIdSb(
   sb: SbClient,
   assignmentId: string,
 ): Promise<StudentAssignment | null> {
-  const list = await getStudentAssignmentsSb(sb);
-  return list.find((a) => a.id === assignmentId) ?? null;
+  const [assignment] = await loadAssignmentsSb(sb, { assignmentId });
+  return assignment ?? null;
 }
 
 export async function uploadAndCreateSubmissionSb(
@@ -240,14 +280,14 @@ export async function uploadAndCreateSubmissionSb(
   assignmentId: string,
   file: File,
 ): Promise<StudentSubmission> {
-  const { data: user } = await sb.auth.getUser();
-  if (!user.user) throw new Error("not_authenticated");
+  const userId = await currentUserIdSb(sb);
+  if (!userId) throw new Error("not_authenticated");
 
   const { data: existing } = await sb
     .from("submissions")
     .select("*")
     .eq("assignment_id", assignmentId)
-    .eq("student_id", user.user.id)
+    .eq("student_id", userId)
     .maybeSingle();
 
   let submissionId = existing?.id;
@@ -256,7 +296,7 @@ export async function uploadAndCreateSubmissionSb(
       .from("submissions")
       .insert({
         assignment_id: assignmentId,
-        student_id: user.user.id,
+        student_id: userId,
         original_filename: file.name,
         file_size_bytes: file.size,
         mime_type: file.type,
@@ -688,8 +728,7 @@ export async function uploadSelfInitiatedFileSb(
   sb: SbClient,
   file: File,
 ): Promise<{ assignmentId: string; submission: StudentSubmission }> {
-  const { data: user } = await sb.auth.getUser();
-  if (!user.user) throw new Error("not_authenticated");
+  if (!(await currentUserIdSb(sb))) throw new Error("not_authenticated");
 
   const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[_\-]+/g, " ").trim();
   const title = baseName ? baseName.charAt(0).toUpperCase() + baseName.slice(1) : "Personal task";

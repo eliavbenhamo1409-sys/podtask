@@ -26,7 +26,8 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: { default: "Podtask", template: "%s · Podtask" },
   description: "AI-led podcast-style academic interview studio.",
-  icons: { icon: "/podtask-logo.png", apple: "/podtask-logo.png" },
+  // Small raster icons (2-6 KB) instead of the 69 KB logo on every first visit.
+  icons: { icon: "/icon-64.png", apple: "/icon-180.png" },
 };
 
 export const viewport: Viewport = {
@@ -63,6 +64,21 @@ export default async function LocaleLayout({
       className={`${heebo.variable} ${manrope.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        {/* The browser talks to Supabase directly (uploads, realtime session,
+            transcript). Opening the TLS connection early saves ~100-150 ms
+            on the first of those calls. */}
+        {process.env.NEXT_PUBLIC_SUPABASE_URL ? (
+          <>
+            <link
+              rel="preconnect"
+              href={process.env.NEXT_PUBLIC_SUPABASE_URL}
+              crossOrigin="anonymous"
+            />
+            <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+          </>
+        ) : null}
+      </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <MotionProvider>{children}</MotionProvider>

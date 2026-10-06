@@ -36,9 +36,11 @@ export function LoginClient() {
     document.cookie = STALE_GUEST_COOKIE_CLEAR;
     // Whoever signs in next may be a different student.
     clearCachedProfileInitial();
-    // Warm the SDK chunk in the background.
+    // Warm the SDK chunk and the dashboard route in the background, so the
+    // transition after sign-in has nothing left to download.
     void import("@/lib/supabase/client");
-  }, []);
+    router.prefetch("/student");
+  }, [router]);
 
   async function handleSignIn(event: FormEvent) {
     event.preventDefault();
