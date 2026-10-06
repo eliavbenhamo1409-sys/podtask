@@ -6,7 +6,6 @@ import { notFound } from "next/navigation";
 import { Heebo, Manrope } from "next/font/google";
 import { routing } from "@/lib/i18n/routing";
 import { localeMeta, type Locale } from "@/lib/i18n/config";
-import { QueryProvider } from "@/components/providers/query-provider";
 import { MotionProvider } from "@/components/providers/motion-provider";
 import type { Metadata, Viewport } from "next";
 
@@ -66,9 +65,7 @@ export default async function LocaleLayout({
     >
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <QueryProvider>
-            <MotionProvider>{children}</MotionProvider>
-          </QueryProvider>
+          <MotionProvider>{children}</MotionProvider>
         </NextIntlClientProvider>
       </body>
     </html>

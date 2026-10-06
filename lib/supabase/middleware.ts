@@ -46,12 +46,18 @@ export async function updateSession(
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() refreshes an expired session (via setAll above) exactly like
+  // getUser() did, but verifies the access token LOCALLY against the
+  // project's ES256 public key (JWKS, cached for 10 min per isolate) instead
+  // of a round trip to Supabase Auth. Middleware runs at the edge closest to
+  // the visitor, so the old getUser() call cost ~300 ms on every navigation.
+  // This only gates the redirect to /login; data access is still enforced by
+  // RLS and by the server-side calls in the pages.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const signedIn = Boolean(claimsData?.claims?.sub);
 
   const { pathname } = request.nextUrl;
-  if (!MOCK_MODE && !user && isProtectedPath(pathname)) {
+  if (!MOCK_MODE && !signedIn && isProtectedPath(pathname)) {
     const url = request.nextUrl.clone();
     const localePrefix =
       locales.find((l) => pathname.startsWith(`/${l}/`)) ?? defaultLocale;

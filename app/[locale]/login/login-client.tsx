@@ -8,8 +8,14 @@ import { Blobs } from "@/components/podtask/blobs";
 import { BrandMark } from "@/components/podtask/brand-mark";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { ArrowIcon, SparkIcon } from "@/components/podtask/icons";
-import { createClient } from "@/lib/supabase/client";
+import { clearCachedProfileInitial } from "@/lib/student/profile-initial";
 import { MOCK_MODE } from "@/lib/env";
+
+// The Supabase SDK (~60 KB compressed) is not needed to paint this screen,
+// only to submit it. It is loaded right after mount (see the effect below)
+// so it is ready by the time the student clicks, without blocking first paint.
+const loadSupabase = () =>
+  import("@/lib/supabase/client").then((m) => m.createClient());
 
 const STALE_GUEST_COOKIE_CLEAR =
   "pt_guest=; path=/; max-age=0; SameSite=Lax";
@@ -28,6 +34,10 @@ export function LoginClient() {
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.cookie = STALE_GUEST_COOKIE_CLEAR;
+    // Whoever signs in next may be a different student.
+    clearCachedProfileInitial();
+    // Warm the SDK chunk in the background.
+    void import("@/lib/supabase/client");
   }, []);
 
   async function handleSignIn(event: FormEvent) {
@@ -41,7 +51,7 @@ export function LoginClient() {
     }
 
     try {
-      const supabase = createClient();
+      const supabase = await loadSupabase();
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -68,7 +78,7 @@ export function LoginClient() {
 
     setPending(true);
     try {
-      const supabase = createClient();
+      const supabase = await loadSupabase();
 
       // Mint a one-shot guest user via the create-guest-session edge function.
       // This sidesteps the project-level Anonymous Sign-ins toggle: the
@@ -128,7 +138,7 @@ export function LoginClient() {
     }
 
     try {
-      const supabase = createClient();
+      const supabase = await loadSupabase();
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {

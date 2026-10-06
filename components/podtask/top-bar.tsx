@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { getStudentProfile } from "@/lib/student/student-service";
+import { getCachedProfileInitial } from "@/lib/student/profile-initial";
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { BrandMark } from "./brand-mark";
 import { ClockIcon, GlobeIcon, HomeIcon, QuestionIcon } from "./icons";
@@ -28,9 +28,9 @@ export function TopBar({ studentInitial }: TopBarProps) {
   useEffect(() => {
     if (studentInitial) return;
     let cancelled = false;
-    getStudentProfile()
-      .then((p) => {
-        if (!cancelled) setFetchedInitial(p.avatarInitial);
+    getCachedProfileInitial()
+      .then((initial) => {
+        if (!cancelled) setFetchedInitial(initial);
       })
       .catch(() => {});
     return () => {

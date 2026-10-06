@@ -162,22 +162,25 @@ export async function getStudentAssignmentsSb(
   const ids = assignments.map((a) => a.id);
   if (ids.length === 0) return [];
 
-  const { data: submissionsRaw } = await sb
-    .from("submissions")
-    .select("id, assignment_id, status, file_path, original_filename, file_size_bytes, submitted_at")
-    .in("assignment_id", ids)
-    .eq("student_id", user.user.id);
+  // Independent of each other — fetch in parallel (one round trip, not two).
+  const [{ data: submissionsRaw }, { data: interviewsRaw }] = await Promise.all([
+    sb
+      .from("submissions")
+      .select("id, assignment_id, status, file_path, original_filename, file_size_bytes, submitted_at")
+      .in("assignment_id", ids)
+      .eq("student_id", user.user.id),
+    sb
+      .from("interviews")
+      .select("id, assignment_id, status, current_state, started_at, completed_at, duration_seconds")
+      .in("assignment_id", ids)
+      .eq("student_id", user.user.id),
+  ]);
   const submissions = (submissionsRaw ?? []) as unknown as SubmissionRow[];
 
   const subByAssignment = new Map(
     submissions.map((s) => [s.assignment_id, s] as const),
   );
 
-  const { data: interviewsRaw } = await sb
-    .from("interviews")
-    .select("id, assignment_id, status, current_state, started_at, completed_at, duration_seconds")
-    .in("assignment_id", ids)
-    .eq("student_id", user.user.id);
   const interviews = (interviewsRaw ?? []) as unknown as InterviewRow[];
 
   const intByAssignment = new Map(
@@ -214,9 +217,12 @@ export async function getStudentAssignmentsSb(
 export async function getStudentDashboardSb(
   sb: SbClient,
 ): Promise<StudentDashboard | null> {
-  const profile = await getStudentProfileSb(sb);
+  // Profile and assignments don't depend on each other — fetch in parallel.
+  const [profile, assignments] = await Promise.all([
+    getStudentProfileSb(sb),
+    getStudentAssignmentsSb(sb),
+  ]);
   if (!profile) return null;
-  const assignments = await getStudentAssignmentsSb(sb);
   const next = assignments.find((a) => a.status !== "completed");
   return { profile, assignments, next };
 }
@@ -451,16 +457,19 @@ export async function getSubmissionLobbySb(
   assignment: StudentAssignment;
   interview: StudentInterview;
 } | null> {
-  const submission = await getSubmissionStatusSb(sb, submissionId);
+  // The submission row and the interview-id lookup only need submissionId,
+  // so they go out together; the assignment needs submission.assignmentId.
+  const [submission, { data: interviewRow }] = await Promise.all([
+    getSubmissionStatusSb(sb, submissionId),
+    sb
+      .from("interviews")
+      .select("id")
+      .eq("submission_id", submissionId)
+      .maybeSingle(),
+  ]);
   if (!submission) return null;
   const assignment = await getAssignmentByIdSb(sb, submission.assignmentId);
   if (!assignment) return null;
-
-  const { data: interviewRow } = await sb
-    .from("interviews")
-    .select("id")
-    .eq("submission_id", submissionId)
-    .maybeSingle();
   let interview: StudentInterview | null = null;
   if (interviewRow?.id) {
     interview = await getInterviewSb(sb, interviewRow.id);
