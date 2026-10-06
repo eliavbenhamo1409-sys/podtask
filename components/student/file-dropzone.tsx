@@ -3,13 +3,8 @@
 import { useCallback, useState, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
-import { Badge, Chip } from "@/components/podtask/chip";
-import {
-  CheckIcon,
-  DocIcon,
-  UploadIcon,
-  XIcon,
-} from "@/components/podtask/icons";
+import { Chip } from "@/components/podtask/chip";
+import { DocIcon, UploadIcon, XIcon } from "@/components/podtask/icons";
 import { cn, formatBytes } from "@/lib/utils";
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -66,13 +61,15 @@ export function FileDropzone({
   );
 
   if (selected) {
+    const done = progress >= 100;
+    const ext = /\.([a-z0-9]{1,4})$/i.exec(selected.name)?.[1]?.toUpperCase();
     return (
       <motion.div
         layout
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="card"
-        style={{ padding: 28, marginTop: 32 }}
+        style={{ padding: 24, marginTop: 32 }}
         role="status"
         aria-live="polite"
       >
@@ -82,70 +79,56 @@ export function FileDropzone({
               width: 56,
               height: 56,
               borderRadius: 16,
-              background:
-                "linear-gradient(135deg, rgba(125,211,252,0.25), rgba(253,164,175,0.25))",
+              background: "rgb(var(--white))",
+              border: "1px solid rgb(var(--line))",
+              boxShadow: "0 1px 2px rgba(16,24,40,0.06)",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgb(var(--cyan))",
+              gap: 3,
+              color: "rgb(var(--ink-2))",
               flexShrink: 0,
             }}
           >
-            <DocIcon size={26} />
+            <DocIcon size={22} />
+            {ext && (
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  lineHeight: 1,
+                  color: "rgb(var(--muted))",
+                }}
+              >
+                {ext}
+              </span>
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{ fontWeight: 800, fontSize: 16, overflowWrap: "anywhere" }}
-                >
-                  <bdi>{selected.name}</bdi>
-                </div>
-                <div
-                  className="text-muted"
-                  style={{ fontSize: 13, marginTop: 2 }}
-                >
-                  {progress < 100
-                    ? t("upload.uploadingPercent", { percent: progress })
-                    : `${formatBytes(selected.size)} · ${t("upload.ready")}`}
-                </div>
-              </div>
-              {progress >= 100 ? (
-                <Badge variant="mint">
-                  <CheckIcon size={12} />
-                  {t("upload.ready")}
-                </Badge>
-              ) : (
-                <Badge variant="cyan" showDot>
-                  {t("status.uploading")}
-                </Badge>
-              )}
+            <div
+              style={{ fontWeight: 800, fontSize: 16, overflowWrap: "anywhere" }}
+            >
+              <bdi>{selected.name}</bdi>
             </div>
             <div
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progress}
-              aria-label={t("status.uploading")}
-              style={{
-                marginTop: 14,
-                height: 6,
-                background: "rgb(var(--line-2))",
-                borderRadius: 99,
-                overflow: "hidden",
-              }}
+              className="text-muted"
+              style={{ fontSize: 13, marginTop: 2 }}
             >
-              <div
-                style={{
-                  height: "100%",
-                  width: `${progress}%`,
-                  background: "linear-gradient(90deg, #7DD3FC, #0EA5E9)",
-                  borderRadius: 99,
-                  transition: "width .15s",
-                }}
-              />
+              {done ? (
+                <>
+                  <bdi>{formatBytes(selected.size)}</bdi> ·{" "}
+                  <span style={{ color: "rgb(var(--ink))", fontWeight: 600 }}>
+                    {t("upload.ready")}
+                  </span>
+                </>
+              ) : (
+                t("upload.uploadingPercent", { percent: progress })
+              )}
             </div>
           </div>
+          <UploadRing progress={progress} label={t("status.uploading")} />
           <button
             type="button"
             className="btn btn-ghost"
@@ -276,5 +259,90 @@ export function FileDropzone({
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+const RING_R = 13;
+const RING_C = 2 * Math.PI * RING_R;
+
+/** Progress ring that fills while uploading, then closes into a solid check seal. */
+function UploadRing({ progress, label }: { progress: number; label: string }) {
+  const done = progress >= 100;
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={progress}
+      aria-label={label}
+      style={{ position: "relative", width: 32, height: 32, flexShrink: 0 }}
+    >
+      <svg
+        width={32}
+        height={32}
+        viewBox="0 0 32 32"
+        aria-hidden
+        style={{ transform: "rotate(-90deg)" }}
+      >
+        <circle
+          cx={16}
+          cy={16}
+          r={RING_R}
+          fill="none"
+          stroke="rgb(var(--line))"
+          strokeWidth={2.5}
+        />
+        <circle
+          cx={16}
+          cy={16}
+          r={RING_R}
+          fill="none"
+          stroke="rgb(var(--ink))"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeDasharray={RING_C}
+          strokeDashoffset={RING_C * (1 - Math.min(progress, 100) / 100)}
+          style={{ transition: "stroke-dashoffset .15s" }}
+        />
+      </svg>
+      <AnimatePresence>
+        {done && (
+          <motion.span
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 520, damping: 26 }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "50%",
+              background: "rgb(var(--ink))",
+              color: "rgb(var(--white))",
+              display: "grid",
+              placeItems: "center",
+              boxShadow: "0 6px 16px rgba(16,24,40,0.22)",
+            }}
+          >
+            <svg
+              width={15}
+              height={15}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <motion.path
+                d="M20 6 9 17l-5-5"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.28, delay: 0.08, ease: "easeOut" }}
+              />
+            </svg>
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
