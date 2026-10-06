@@ -2532,8 +2532,16 @@
     cursor: pointer;
     transition: transform 0.2s;
   }
-  .mic-btn:hover {
+  .mic-btn:hover:not(:disabled) {
     transform: scale(1.04);
+  }
+  .mic-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    animation: none;
+  }
+  .mic-btn:disabled::after {
+    animation: none;
   }
   .mic-btn.recording {
     background: linear-gradient(135deg, #fda4af, #fb7185);

@@ -222,9 +222,16 @@ export function MicTestClient({ submissionId, interviewId }: MicTestClientProps)
     stopTimerRef.current = window.setTimeout(stopRecording, MAX_RECORD_MS);
   }
 
+  // The big mic button is the one control students reach for, so from the
+  // "recorded" state (including a silent clip) it discards the old clip and
+  // starts a fresh take, same as "record again".
   function toggleRecording() {
-    if (phase === "recording") stopRecording();
-    else if (phase === "idle") startRecording();
+    if (phase === "recording") {
+      stopRecording();
+      return;
+    }
+    if (phase === "recorded") recordAgain();
+    startRecording();
   }
 
   function togglePlayback() {
@@ -532,8 +539,10 @@ export function MicTestClient({ submissionId, interviewId }: MicTestClientProps)
                 <MicButton
                   recording={recording}
                   onClick={toggleRecording}
-                  ariaLabel={t("micTest.tapToRecord")}
-                  disabled={recorded || unsupported}
+                  ariaLabel={
+                    recorded ? t("micTest.recordAgain") : t("micTest.tapToRecord")
+                  }
+                  disabled={unsupported}
                 >
                   {recording ? <XIcon size={24} /> : <MicIcon size={28} />}
                 </MicButton>
