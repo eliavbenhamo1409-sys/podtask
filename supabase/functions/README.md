@@ -43,7 +43,7 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 | Slug | Deployed version | Matches repo? |
 | --- | --- | --- |
 | prepare-submission | v6 (2026-10-14) | yes — question pool + seeded selection, raw document text |
-| interview-control | v2 (2026-10-16) | yes — event engine (event_id dedupe, open/close), camera_exemption, camera default `required` |
+| interview-control | v3 (2026-10-16) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required` |
 | create-realtime-session | v15 (2026-10-14) | **no — repo adds the `realtime` admission check (grading engine v2); deploy after migration 20260515000001** |
 | save-interview-message | v5 (2026-10-14) | yes — status guard, timing metadata, clientId dedupe |
 | evaluate-answer | v4 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
