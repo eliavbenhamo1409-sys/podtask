@@ -118,6 +118,22 @@ interface PendingFunctionCall {
   args: string;
 }
 
+/** First candidate that parses as a JSON object wins; `{}` when none does. */
+function parseToolArgs(candidates: string[]): Record<string, unknown> {
+  for (const text of candidates) {
+    if (!text) continue;
+    try {
+      const value: unknown = JSON.parse(text);
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return {};
+}
+
 export class OpenAIRealtimeAdapter {
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
@@ -592,17 +608,16 @@ export class OpenAIRealtimeAdapter {
         const finalCallId =
           entry?.callId ??
           (typeof event.call_id === "string" ? event.call_id : "");
-        const argText =
-          (entry?.args ?? "") +
-          (typeof event.arguments === "string" ? event.arguments : "");
+        // `.done` carries the complete arguments string and the deltas we
+        // buffered are that same text, so concatenating the two doubled the
+        // JSON ("{...}{...}") and every call with arguments parsed as `{}`.
+        // Prefer the final string and fall back to the buffered deltas.
+        const finalArgs =
+          typeof event.arguments === "string" ? event.arguments : "";
+        const streamedArgs = entry?.args ?? "";
         if (id) this.pendingCalls.delete(id);
         if (!finalName || !finalCallId) break;
-        let parsed: Record<string, unknown> = {};
-        try {
-          parsed = argText ? (JSON.parse(argText) as Record<string, unknown>) : {};
-        } catch {
-          parsed = {};
-        }
+        const parsed = parseToolArgs([finalArgs, streamedArgs]);
         this.callbacks.onToolCall?.({
           name: finalName,
           args: parsed,
