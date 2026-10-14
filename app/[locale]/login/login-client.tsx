@@ -36,11 +36,31 @@ export function LoginClient() {
     document.cookie = STALE_GUEST_COOKIE_CLEAR;
     // Whoever signs in next may be a different student.
     clearCachedProfileInitial();
-    // Warm the SDK chunk and the dashboard route in the background, so the
-    // transition after sign-in has nothing left to download.
+    // Warm the SDK chunk in the background, so sign-in has nothing left to
+    // download. The dashboard route is prefetched only in mock mode: with real
+    // auth this visitor is still signed out, so the prefetch would cache the
+    // middleware's redirect back to /login (see enterStudio).
     void import("@/lib/supabase/client");
-    router.prefetch("/student");
+    if (MOCK_MODE) router.prefetch("/student");
+
+    // The Back button can restore this page from the back/forward cache with
+    // the buttons still disabled by the sign-in that navigated away.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setPending(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, [router]);
+
+  // After a real sign-in, open the dashboard with a full page load. It is the
+  // only navigation guaranteed to reach the middleware with the new auth
+  // cookie: a client-side router.push can be answered from the router cache,
+  // which in a fresh browser still holds the signed-out redirect to /login,
+  // so the student would stay on this screen (seen on first visits from
+  // Windows machines; any browser without an earlier session is affected).
+  function enterStudio() {
+    window.location.assign(`/${locale}/student`);
+  }
 
   async function handleSignIn(event: FormEvent) {
     event.preventDefault();
@@ -52,6 +72,7 @@ export function LoginClient() {
       return;
     }
 
+    let leaving = false;
     try {
       const supabase = await loadSupabase();
       const { error } = await supabase.auth.signInWithPassword({
@@ -61,12 +82,14 @@ export function LoginClient() {
       if (error) {
         setError(t("auth.errorInvalid"));
       } else {
-        router.push("/student");
+        leaving = true;
+        enterStudio();
       }
     } catch {
       setError(t("auth.errorGeneric"));
     } finally {
-      setPending(false);
+      // Keep the buttons disabled while the dashboard loads.
+      if (!leaving) setPending(false);
     }
   }
 
@@ -79,6 +102,7 @@ export function LoginClient() {
     }
 
     setPending(true);
+    let leaving = false;
     try {
       const supabase = await loadSupabase();
 
@@ -108,7 +132,8 @@ export function LoginClient() {
           setError(t("auth.errorAnonymousDisabled"));
           return;
         }
-        router.push("/student");
+        leaving = true;
+        enterStudio();
         return;
       }
 
@@ -120,11 +145,14 @@ export function LoginClient() {
         setError(t("auth.errorGeneric"));
         return;
       }
-      router.push("/student");
+      leaving = true;
+      enterStudio();
     } catch {
       setError(t("auth.errorGeneric"));
     } finally {
-      setPending(false);
+      // Keep the button disabled while the dashboard loads, so a second click
+      // cannot mint another guest user.
+      if (!leaving) setPending(false);
     }
   }
 
