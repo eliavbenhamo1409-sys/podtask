@@ -65,7 +65,7 @@ const SCORING_LABEL_KEYS = [
 ] as const;
 const SCORING_STEP_MS = 2600;
 
-function ScoringProgress({ timedOut }: { timedOut: boolean }) {
+function ScoringProgress({ timedOut, failed }: { timedOut: boolean; failed: boolean }) {
   const t = useTranslations();
   const [step, setStep] = useState(0);
   useEffect(() => {
@@ -111,7 +111,11 @@ function ScoringProgress({ timedOut }: { timedOut: boolean }) {
         className="text-muted"
         style={{ fontSize: 12, marginTop: 14, lineHeight: 1.6 }}
       >
-        {timedOut ? t("complete.scoringSlow") : t("complete.scoringHint")}
+        {failed
+          ? t("complete.scoringFailed")
+          : timedOut
+            ? t("complete.scoringSlow")
+            : t("complete.scoringHint")}
       </div>
       {timedOut && (
         <button
@@ -180,6 +184,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
     null,
   );
   const [timedOut, setTimedOut] = useState(false);
+  const [gradingFailed, setGradingFailed] = useState(false);
 
   useEffect(() => {
     if (report && report.status === "ready") return;
@@ -207,6 +212,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
             if (cancelled) return;
             const job = status?.job?.status ?? null;
             if (job === "dead") {
+              setGradingFailed(true);
               setTimedOut(true);
               return;
             }
@@ -321,7 +327,7 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
 
   return (
     <>
-      {ready ? <ReportCard report={ready} t={t} /> : <ScoringProgress timedOut={timedOut} />}
+      {ready ? <ReportCard report={ready} t={t} /> : <ScoringProgress timedOut={timedOut} failed={gradingFailed} />}
       <DisclosureGroup items={bars} />
     </>
   );

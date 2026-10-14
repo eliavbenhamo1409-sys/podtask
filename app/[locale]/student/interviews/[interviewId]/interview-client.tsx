@@ -2170,7 +2170,9 @@ export function InterviewRoomClient({
           }}
         >
           <div>
-            {t("interview.connectionError")}: {adapterError}
+            {adapterError === "at_capacity"
+              ? t("interview.atCapacity")
+              : `${t("interview.connectionError")}: ${adapterError}`}
           </div>
           <div className="text-muted" style={{ fontSize: 12, marginTop: 6, color: "#9F1239" }}>
             {t("interview.reconnectHint")}
