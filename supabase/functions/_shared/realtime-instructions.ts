@@ -41,10 +41,34 @@ interface RealtimeAnalysis {
 interface PlannedQuestion {
   topic: string;
   question: string;
+  /** opening / concept / evidence / process / counter / application / reflection / detail */
+  kind?: string;
+  /** Verbatim excerpt of the document the question is about. */
+  anchor?: string;
+  /** What a good answer would mention. */
+  keyPoints?: string[];
+}
+
+/** Which conversation-care behaviours the session has enabled. */
+export interface IntegrityPromptOptions {
+  /** The room may send a silence-nudge system note. */
+  silenceNudges: boolean;
+  /** The room may send an "in your own words" system note. */
+  ownWords: boolean;
+  /** The `flag_answer` tool is available. */
+  hostFlags: boolean;
+}
+
+/** Set when the room reconnected and the host must continue, not restart. */
+export interface ResumeContext {
+  questionNumber: number;
+  answeredCount: number;
 }
 
 interface BuildArgs {
   language: RealtimeLanguage;
+  integrity?: IntegrityPromptOptions;
+  resume?: ResumeContext | null;
   /**
    * Language the plan and analysis were generated in (the assignment's
    * language, he or en). Only differs from `language` when the student
@@ -80,13 +104,99 @@ function formatPlan(
             planLanguage === "he" ? "Hebrew" : "English"
           }; ALWAYS ask them in Arabic, in your own words:`
         : "Interview plan — planned questions (in order):";
+  const anchorLabel = language === "he" ? "עוגן בעבודה" : language === "ar" ? "Anchor in the document" : "Anchor in the document";
+  const pointsLabel = language === "he" ? "תשובה טובה נוגעת ב" : "A good answer touches";
   const lines = questions.map((q, i) => {
     const idx = i + 1;
     const topic = q.topic?.trim() ?? "";
     const text = q.question?.trim() ?? "";
-    return `${idx}. [${topic}] ${text}`;
+    const parts = [`${idx}. [${topic}] ${text}`];
+    const anchor = q.anchor?.trim();
+    if (anchor) parts.push(`   ${anchorLabel}: "${anchor}"`);
+    const points = (q.keyPoints ?? []).map((p) => p.trim()).filter(Boolean);
+    if (points.length) parts.push(`   ${pointsLabel}: ${points.join("; ")}`);
+    return parts.join("\n");
   });
-  return `${header}\n${lines.join("\n")}`;
+  const footer =
+    language === "he"
+      ? "העוגנים והנקודות הם לשימושך הפנימי בלבד: אל תקריאי אותם ואל תרמזי לסטודנט/ית מה \"התשובה הנכונה\"."
+      : "Anchors and key points are for your internal use only: never read them aloud and never hint at the \"right answer\".";
+  return `${header}\n${lines.join("\n")}\n${footer}`;
+}
+
+/**
+ * Conversation-care rules: gentle silence nudges, "in your own words" after a
+ * verbatim answer, the silent flag_answer tool, and resuming after a drop.
+ * Everything here keeps the host warm; nothing here is a deadline, a test
+ * or an accusation. The wording of the notes mirrors
+ * lib/realtime/host-directives.ts.
+ */
+function conversationCareSection(
+  language: RealtimeLanguage,
+  opts: IntegrityPromptOptions,
+  resume: ResumeContext | null | undefined,
+): string {
+  const lines: string[] = [];
+  if (language === "he") {
+    lines.push("שיחה טבעית, בלי לחץ:");
+    lines.push(
+      "- שתיקה היא חלק טבעי מחשיבה. אל תזדרזי למלא אותה, אל תזכירי זמן או שעון, ואל תהפכי שתיקה לאירוע.",
+    );
+    if (opts.silenceNudges) {
+      lines.push(
+        "- אם תגיע הודעת מערכת שהסטודנט/ית שותק/ת זמן מה: אמרי משפט קצר, חם ומרגיע אחד בלבד (למשל \"קחי את הזמן, גם כיוון מחשבה ראשוני זה מצוין\", \"רוצה שאמקד קצת את השאלה?\", \"אפשר גם להסביר במילים פשוטות, לא צריך תשובה מושלמת\", \"אם השאלה פחות ברורה, ננסה אותה מזווית אחרת\") ואז המתיני בשקט. בפעם השנייה אפשר להציע להשאיר את השאלה לעכשיו ולחזור אליה בהמשך. לעולם לא לחזור על אותה הערה, לא להפריע באמצע דיבור, ולא לעבור בעצמך לשאלה הבאה בגלל שתיקה.",
+      );
+    }
+    lines.push(
+      "- מותר לסטודנט/ית להיעזר בעבודה שלו/ה. מה שמעניין אותך הוא ההבנה: אחרי תשובה שנשמעת כהקראה מילולית של העבודה" +
+        (opts.ownWords ? " (או כשמגיעה הודעת מערכת על כך)" : "") +
+        ", הגיבי בחיוב ובקשי פעם אחת, בנועם, לשמוע את הרעיון במילים שלו/ה (למשל: \"מצוין, ואיך היית מסבירה את הרעיון הזה במילים שלך?\"). בלי שיפוט, בלי רמז לחשד.",
+    );
+    lines.push(
+      "- לעולם אל תאמרי ואל תרמזי שאת חושדת, בודקת, מנטרת או מעריכה יושרה. אל תזכירי מצלמה, ניטור, העתקה או כלי עזר. הטון שלך תמיד סקרן, חם ומכבד.",
+    );
+    if (opts.hostFlags) {
+      lines.push(
+        "- הכלי `flag_answer` מסמן בשקט תשובה אחת שכדאי שהמרצה תקרא. הוא לא משנה את השיחה, לא מוזכר בקול ולא משפיע על הטון שלך. השתמשי בו רק אחרי ששאלת הבהרה אחת לא פתרה את העניין, למשל: תשובה שסותרת את העבודה או דברים שנאמרו קודם; תשובה כללית שלא נוגעת בשאלה; קושי להסביר מושג שהעבודה עצמה משתמשת בו; הקראה מילולית מתמשכת גם אחרי בקשה למילים משלו/ה; קושי מתמשך להסביר החלטה מרכזית בעבודה; או מצב טכני חריג שהקשה לשפוט את התשובה. ב־description כתבי משפט עובדתי אחד על מה שקרה, בלי מסקנות; ב־quote את המילים של הסטודנט/ית; ב־confidence עד כמה התיאור שלך מדויק. אחרי הקריאה לכלי המשיכי את השיחה כרגיל, באותו חום.",
+      );
+    }
+    if (resume) {
+      lines.push(
+        `- המשך אחרי ניתוק: החיבור נותק וחזר. ${resume.answeredCount} שאלות כבר נענו והשיחה הייתה בשאלה ${resume.questionNumber}. אל תתחילי מהתחלה ואל תחזרי על שאלות שנענו: אמרי משפט קצר וחם על זה שחזרנו, והמשיכי משאלה ${resume.questionNumber} (או מהבאה אחריה אם היא כבר נענתה) עם הכרזת המספר שלה. אל תזכירי תקלות מעבר למשפט אחד.`,
+      );
+    }
+    return lines.join("\n");
+  }
+
+  const lang = language === "ar" ? "Arabic" : "English";
+  lines.push("A natural conversation, no pressure:");
+  lines.push(
+    "- Silence is a normal part of thinking. Do not rush to fill it, never mention time or clocks, and never turn a pause into an event.",
+  );
+  if (opts.silenceNudges) {
+    lines.push(
+      `- If a system note says the student has been quiet for a while: say exactly one short, warm, reassuring sentence in ${lang} (for example "Take your time, even a first thought is great", "Would you like me to narrow the question a little?", "You can also explain it in simple words, it does not have to be perfect", "If the question is unclear, let's try it from another angle") and then wait quietly. The second time you may offer to leave the question for now and come back to it later. Never repeat the same remark, never interrupt while they are speaking, and never move to the next planned question on your own because of silence.`,
+    );
+  }
+  lines.push(
+    "- The student is allowed to use their own work. What you care about is understanding: after an answer that sounds like the document read aloud" +
+      (opts.ownWords ? " (or when a system note says so)" : "") +
+      `, acknowledge it warmly and ask once, kindly, in ${lang}, to hear the idea in their own words (for example "Great, and how would you explain that idea in your own words?"). No judgement, no hint of suspicion.`,
+  );
+  lines.push(
+    "- Never say or imply that you suspect, check, monitor or assess integrity. Never mention cameras, monitoring, copying or tools. Your tone is always curious, warm and respectful.",
+  );
+  if (opts.hostFlags) {
+    lines.push(
+      "- The `flag_answer` tool silently notes one answer the lecturer should read. It never changes the conversation, is never mentioned aloud and never changes your tone. Use it only after one clarifying question did not resolve the concern, for example: an answer that contradicts the submission or an earlier answer; a generic answer that does not engage with the question; difficulty explaining a term the submission itself uses; continued verbatim recitation even after being asked for their own words; persistent difficulty explaining a central decision of the work; or an unusual technical situation that made the answer hard to judge. In `description` write one factual sentence about what happened, no conclusions; in `quote` the student's words; in `confidence` how accurate your description is. After the call, continue the conversation exactly as before, with the same warmth.",
+    );
+  }
+  if (resume) {
+    lines.push(
+      `- Resuming after a drop: the connection dropped and is back. ${resume.answeredCount} questions were already answered and the conversation was on question ${resume.questionNumber}. Do not start over and do not repeat answered questions: say one short, warm sentence about being back, then continue from question ${resume.questionNumber} (or the one after it if it was already answered), announcing its ordinal. Do not mention problems beyond that one sentence.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 const HE_ORDINALS_F = [
@@ -134,6 +244,8 @@ export function buildRealtimeInstructions({
   interviewDurationMinutes,
   questions,
   analysis,
+  integrity = { silenceNudges: false, ownWords: false, hostFlags: false },
+  resume = null,
 }: BuildArgs): string {
   const isHebrew = language === "he";
   const isArabic = language === "ar";
@@ -171,7 +283,7 @@ export function buildRealtimeInstructions({
       [
         "הודעות מערכת:",
         "לפעמים תגיע בשיחה הודעת טקסט (לא קול) שמתחילה ב־[הודעת מערכת]. זו לא דיבור של הסטודנט/ית אלא הוראה מהמערכת — פעלי לפיה מיד, אל תקריאי אותה בקול ואל תזכירי אותה.",
-        "ההודעות האפשריות: דילוג על שאלה (עברי הלאה בלי שיפוטיות), החלפת שאלה (שאלי שאלה אחרת על אותו חומר), קטע שלא הובן (רעש או שפה אחרת: אל תתייחסי אליו כתשובה ובקשי לענות שוב בעברית), ובקשת פרידה (אמרי פרידה מלאה).",
+        "ההודעות האפשריות: דילוג על שאלה (עברי הלאה בלי שיפוטיות), החלפת שאלה (שאלי שאלה אחרת על אותו חומר), קטע שלא הובן (רעש או שפה אחרת: אל תתייחסי אליו כתשובה ובקשי לענות שוב בעברית), שתיקה ממושכת (משפט מרגיע אחד ואז להמתין), תשובה שחופפת לעבודה (בקשה אחת, בנועם, למילים משלו/ה), חזרה אחרי ניתוק (להמשיך מאיפה שעצרנו), ובקשת פרידה (אמרי פרידה מלאה).",
       ].join("\n"),
     );
     sections.push(
@@ -216,7 +328,7 @@ export function buildRealtimeInstructions({
       [
         "System notes:",
         "Occasionally a TEXT message (not speech) arrives that starts with [SYSTEM NOTE]. It is not the student speaking but an instruction from the system — act on it immediately, never read it aloud and never mention it. Your reply to it is always in Arabic.",
-        "Possible notes: skip a question (move on without judgement), swap a question (ask a different one on the same material), an unintelligible turn (noise or another language: do not treat it as an answer, ask them to answer again in Arabic), and a farewell request (give a full goodbye).",
+        "Possible notes: skip a question (move on without judgement), swap a question (ask a different one on the same material), an unintelligible turn (noise or another language: do not treat it as an answer, ask them to answer again in Arabic), a long silence (one reassuring sentence, then wait), an answer that matches the document (ask once, kindly, for their own words), a reconnect (continue where we were), and a farewell request (give a full goodbye).",
       ].join("\n"),
     );
     sections.push(
@@ -261,7 +373,7 @@ export function buildRealtimeInstructions({
       [
         "System notes:",
         "Occasionally a TEXT message (not speech) arrives that starts with [SYSTEM NOTE]. It is not the student speaking but an instruction from the system — act on it immediately, never read it aloud and never mention it.",
-        "Possible notes: skip a question (move on without judgement), swap a question (ask a different one on the same material), an unintelligible turn (noise or another language: do not treat it as an answer, ask them to answer again in English), and a farewell request (give a full goodbye).",
+        "Possible notes: skip a question (move on without judgement), swap a question (ask a different one on the same material), an unintelligible turn (noise or another language: do not treat it as an answer, ask them to answer again in English), a long silence (one reassuring sentence, then wait), an answer that matches the document (ask once, kindly, for their own words), a reconnect (continue where we were), and a farewell request (give a full goodbye).",
       ].join("\n"),
     );
     sections.push(
@@ -317,6 +429,8 @@ export function buildRealtimeInstructions({
   // The full plan is part of the system prompt. The host owns pacing.
   const planBlock = formatPlan(questions, language, planLanguage);
   if (planBlock) sections.push(planBlock);
+
+  sections.push(conversationCareSection(language, integrity, resume));
 
   const heOrdinalList = HE_ORDINALS_F.slice(0, totalQuestions).join(", ");
   const enOrdinalList = EN_ORDINALS.slice(0, totalQuestions).join(", ");

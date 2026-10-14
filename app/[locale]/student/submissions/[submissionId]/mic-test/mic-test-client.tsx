@@ -30,13 +30,17 @@ import {
   XIcon,
 } from "@/components/podtask/icons";
 import type { MicPermissionState } from "@/lib/student/status";
+import type { CameraMode } from "@/lib/integrity/settings";
 
 interface MicTestClientProps {
   submissionId: string;
   interviewId: string;
+  /** off = no camera in this interview; on = asked; required = must be granted to start. */
+  cameraMode?: CameraMode;
 }
 
 type RecorderPhase = "idle" | "recording" | "recorded";
+type CameraCheck = "idle" | "starting" | "on" | "denied" | "unavailable";
 
 const MAX_RECORD_MS = 10_000;
 // RMS below this for the whole clip = nothing reached the mic.
@@ -54,10 +58,17 @@ function pickMimeType(): string | undefined {
   return candidates.find((c) => MediaRecorder.isTypeSupported(c));
 }
 
-export function MicTestClient({ submissionId, interviewId }: MicTestClientProps) {
+export function MicTestClient({
+  submissionId,
+  interviewId,
+  cameraMode = "on",
+}: MicTestClientProps) {
   const t = useTranslations();
   const router = useRouter();
   const [perm, setPerm] = useState<MicPermissionState>("permission_required");
+  const [cam, setCam] = useState<CameraCheck>("idle");
+  const camStreamRef = useRef<MediaStream | null>(null);
+  const camVideoRef = useRef<HTMLVideoElement | null>(null);
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [playing, setPlaying] = useState(false);
   const [level, setLevel] = useState(0);
@@ -143,7 +154,39 @@ export function MicTestClient({ submissionId, interviewId }: MicTestClientProps)
     }
     streamRef.current?.getTracks().forEach((tk) => tk.stop());
     streamRef.current = null;
+    camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
+    camStreamRef.current = null;
   }, [stopMeter]);
+
+  // Camera check: a mirrored preview so the student sees what the camera
+  // sees. The frames stay in the browser; the room opens its own stream.
+  async function requestCamera() {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setCam("unavailable");
+      return;
+    }
+    setCam("starting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: "user" },
+        audio: false,
+      });
+      camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
+      camStreamRef.current = stream;
+      const el = camVideoRef.current;
+      if (el) {
+        el.srcObject = stream;
+        void el.play().catch(() => {});
+      }
+      setCam("on");
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      setCam(name === "NotAllowedError" || name === "SecurityError" ? "denied" : "unavailable");
+    }
+  }
 
   // Release everything on unmount (back link, cancel, navigation).
   useEffect(() => {
@@ -273,7 +316,8 @@ export function MicTestClient({ submissionId, interviewId }: MicTestClientProps)
 
   const recording = phase === "recording";
   const recorded = phase === "recorded";
-  const canStart = recorded || unsupported;
+  const cameraGate = cameraMode !== "required" || cam === "on";
+  const canStart = (recorded || unsupported) && cameraGate;
 
   return (
     <StudentAppShell>
@@ -585,6 +629,62 @@ export function MicTestClient({ submissionId, interviewId }: MicTestClientProps)
             </div>
           )}
         </div>
+
+        {cameraMode !== "off" && perm === "permission_granted" ? (
+          <div className="card" style={{ padding: 28, marginTop: 24 }}>
+            <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 17 }}>
+                  {t("micTest.cameraTitle")}
+                </div>
+                <div className="text-muted" style={{ fontSize: 13, marginTop: 4, maxWidth: 440 }}>
+                  {t("micTest.cameraBody")}
+                </div>
+              </div>
+              <Badge variant={cam === "on" ? "mint" : "neutral"} showDot={cam === "on"}>
+                {cam === "on"
+                  ? t("micTest.cameraOk")
+                  : cam === "denied"
+                    ? t("micTest.cameraDenied")
+                    : cam === "unavailable"
+                      ? t("micTest.cameraUnavailable")
+                      : t("micTest.cameraTitle")}
+              </Badge>
+            </div>
+            <div
+              className="row"
+              style={{ gap: 20, marginTop: 20, alignItems: "center", flexWrap: "wrap" }}
+            >
+              <video
+                ref={camVideoRef}
+                className="mic-cam-preview"
+                autoPlay
+                muted
+                playsInline
+                style={{ display: cam === "on" ? "block" : "none" }}
+              />
+              {cam !== "on" ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void requestCamera()}
+                  disabled={cam === "starting"}
+                >
+                  {cam === "denied" || cam === "unavailable"
+                    ? t("micTest.cameraTryAgain")
+                    : t("micTest.cameraAllow")}
+                </button>
+              ) : null}
+              <div className="text-muted" style={{ fontSize: 13, flex: "1 1 220px", lineHeight: 1.5 }}>
+                {cam === "denied"
+                  ? t("micTest.cameraDeniedBody")
+                  : cameraMode === "required"
+                    ? t("micTest.cameraRequired")
+                    : t("micTest.cameraOptional")}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div
           className="row"

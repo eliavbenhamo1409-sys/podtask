@@ -65,13 +65,32 @@ import { MOCK_INTERVIEW_QUESTIONS } from "@/lib/student/mock-data";
 import { REALTIME_ADAPTER } from "@/lib/env";
 import {
   buildFarewellInstructions,
+  buildOwnWordsDirective,
   buildReplaceDirective,
+  buildResumeDirective,
+  buildSilenceNudgeDirective,
   buildSkipDirective,
   buildUnintelligibleDirective,
   isHostDirective,
   type FarewellReason,
   type UnintelligibleKind,
 } from "@/lib/realtime/host-directives";
+import {
+  getDocumentText,
+  recordDisconnect,
+  recordIntegrityEvents,
+  recordInterviewFlag,
+} from "@/lib/student/student-service";
+import type { IntegritySettings } from "@/lib/integrity/settings";
+import type { IntegrityClientEvent } from "@/lib/integrity/types";
+import { IntegrityEventQueue } from "@/lib/integrity/event-queue";
+import { ActivityMonitor } from "@/lib/integrity/activity-monitor";
+import { CameraMonitor, type CameraStatus } from "@/lib/integrity/camera-monitor";
+import {
+  DocumentIndex,
+  computeOverlap,
+  isSignificantOverlap,
+} from "@/lib/integrity/overlap";
 import { assessStudentUtterance } from "@/lib/realtime/student-text-guard";
 import {
   isRtlInterviewLanguage,
@@ -124,6 +143,14 @@ const FINAL_ANSWER_WATCHDOG_SHORT_MS = 45_000; // after skipping the last questi
 // A rejected student turn steers the host at most this often: both final
 // student events can carry the same turn, and one note is enough.
 const GUARD_NOTE_COOLDOWN_MS = 4000;
+// Silence nudges: the second one comes this long after the first, and there
+// are never more than two per planned question.
+const SECOND_NUDGE_DELAY_MS = 30_000;
+const MAX_NUDGES_PER_QUESTION = 2;
+// "In your own words" is asked at most this many times per interview.
+const MAX_OWN_WORDS_PROMPTS = 2;
+// Latencies longer than this are a reload / a pause, not thinking time.
+const MAX_LATENCY_MS = 10 * 60 * 1000;
 
 interface TurnEntry {
   id: string;
@@ -133,6 +160,7 @@ interface TurnEntry {
 
 interface InterviewRoomClientProps {
   interviewId: string;
+  submissionId: string;
   assignmentTitle: string;
   questions: StudentInterviewQuestion[];
   /** UI locale (chrome, labels). */
@@ -142,6 +170,11 @@ interface InterviewRoomClientProps {
   /** Shown on the student card; falls back to a generic label. */
   studentName?: string;
   studentInitial?: string;
+  /** Resolved per-assignment integrity flags (camera, telemetry, nudges…). */
+  integrity: IntegritySettings;
+  /** Where to continue from when the room reopens mid-interview. */
+  resume: { lastQuestionIndex: number; answeredQuestionIds: string[] };
+  attempt: number;
 }
 
 function makeTurnId(): string {
@@ -176,12 +209,16 @@ function saveCaptionRate(locale: string, charsPerSecond: number): void {
 
 export function InterviewRoomClient({
   interviewId,
+  submissionId,
   assignmentTitle,
   questions: initialQuestions,
   locale,
   interviewLanguage,
   studentName,
   studentInitial,
+  integrity,
+  resume,
+  attempt,
 }: InterviewRoomClientProps) {
   const t = useTranslations();
   const router = useRouter();
@@ -196,10 +233,20 @@ export function InterviewRoomClient({
     () => questions.slice(0, INTERVIEW_QUESTION_COUNT),
     [questions],
   );
+  const cappedQuestionsRef = useRef(cappedQuestions);
+  useEffect(() => {
+    cappedQuestionsRef.current = cappedQuestions;
+  }, [cappedQuestions]);
 
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
   const [adapterError, setAdapterError] = useState<string | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
+  const [showResumed, setShowResumed] = useState(resume.lastQuestionIndex >= 0);
 
   const adapterMode: InterviewAdapterMode =
     REALTIME_ADAPTER === "openai" && isUuidLike(interviewId) ? "openai" : "mock";
@@ -283,6 +330,51 @@ export function InterviewRoomClient({
   const pacerRef = useRef<CaptionPacer | null>(null);
   const captionRevisionRef = useRef(-1);
 
+  // ---- Section: integrity bookkeeping ----
+  // Per-turn timing (client telemetry, stored with each persisted answer):
+  // when the host's audio stopped, when the student's speech started and
+  // stopped, and whether the student spoke over the host.
+  const turnSeqRef = useRef(0);
+  const currentTurnIdRef = useRef<string | null>(null);
+  const speechStartedAtRef = useRef<number | null>(null);
+  const speechStoppedAtRef = useRef<number | null>(null);
+  const lastHostPlaybackStopAtRef = useRef<number | null>(null);
+  const bargeInPendingRef = useRef(false);
+  const muteTogglesRef = useRef(0);
+  const mutedDuringTurnRef = useRef(false);
+  const nudgedThisTurnRef = useRef(false);
+  // Telemetry plumbing: one queue, the activity monitor and the camera.
+  const eventQueueRef = useRef<IntegrityEventQueue | null>(null);
+  const activityRef = useRef<ActivityMonitor | null>(null);
+  const cameraRef = useRef<CameraMonitor | null>(null);
+  // Silence nudges (per planned question).
+  const nudgeTimerRef = useRef<number | null>(null);
+  const nudgeStageRef = useRef(0);
+  const nudgeQuestionRef = useRef(-1);
+  // The nudge re-arms itself from inside its own timer; a ref avoids the
+  // callback referring to itself.
+  const armNudgeRef = useRef<() => void>(() => {});
+  // "In your own words": the document index and how often we asked.
+  const docIndexRef = useRef<DocumentIndex | null>(null);
+  const ownWordsCountRef = useRef(0);
+  const ownWordsQuestionsRef = useRef<Set<string>>(new Set());
+  const resumeRef = useRef(resume);
+  const integrityRef = useRef(integrity);
+  useEffect(() => {
+    integrityRef.current = integrity;
+  }, [integrity]);
+
+  // Which plan question the conversation is on right now (null during the
+  // greeting, before the first ordinal announcement).
+  const planQuestionIdNow = useCallback((): string | null => {
+    const i = lastDetectedQuestionIndexRef.current;
+    return i >= 0 ? (cappedQuestionsRef.current[i]?.id ?? null) : null;
+  }, []);
+
+  const pushIntegrityEvent = useCallback((event: IntegrityClientEvent) => {
+    eventQueueRef.current?.push(event);
+  }, []);
+
   useEffect(() => {
     askedQuestionIndexesRef.current = new Set();
     lastDetectedQuestionIndexRef.current = -1;
@@ -311,7 +403,114 @@ export function InterviewRoomClient({
     // A fresh caption pacer is created lazily for the new interview.
     pacerRef.current = null;
     captionRevisionRef.current = -1;
+    // Integrity bookkeeping starts clean too.
+    turnSeqRef.current = 0;
+    currentTurnIdRef.current = null;
+    speechStartedAtRef.current = null;
+    speechStoppedAtRef.current = null;
+    lastHostPlaybackStopAtRef.current = null;
+    bargeInPendingRef.current = false;
+    muteTogglesRef.current = 0;
+    mutedDuringTurnRef.current = false;
+    nudgedThisTurnRef.current = false;
+    nudgeStageRef.current = 0;
+    nudgeQuestionRef.current = -1;
+    ownWordsCountRef.current = 0;
+    ownWordsQuestionsRef.current = new Set();
+    // Reopening mid-interview: the host continues from the last question.
+    const r = resumeRef.current;
+    if (r.lastQuestionIndex >= 0) {
+      lastDetectedQuestionIndexRef.current = r.lastQuestionIndex;
+      for (let i = 0; i <= r.lastQuestionIndex; i++) askedQuestionIndexesRef.current.add(i);
+      studentAnswerCountRef.current = r.answeredQuestionIds.length;
+    }
   }, [interviewId]);
+
+  // ---- Section: telemetry (activity, camera, document index) ----
+
+  // Telemetry queue + browser activity monitor. Live sessions only, and
+  // only when the assignment enables it. Every event is client telemetry
+  // and is labelled as such on the lecturer's side.
+  useEffect(() => {
+    if (adapterMode !== "openai") return;
+    const queue = new IntegrityEventQueue((events, opts) =>
+      recordIntegrityEvents(interviewId, events, opts),
+    );
+    eventQueueRef.current = queue;
+    let activity: ActivityMonitor | null = null;
+    if (integrity.activityMonitoring) {
+      activity = new ActivityMonitor({
+        onEvent: (event) => queue.push(event),
+        getPlanQuestionId: planQuestionIdNow,
+        trackFullscreen: integrity.fullscreen,
+      });
+      activity.start();
+      activityRef.current = activity;
+    }
+    // Only a keepalive request survives the navigation away from the room.
+    const onPageHide = () => {
+      void queue.flush({ keepalive: true });
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      activity?.stop();
+      activityRef.current = null;
+      void queue.flush({ keepalive: true });
+      queue.dispose();
+      eventQueueRef.current = null;
+    };
+    // adapterMode / interviewId / flags are stable for the life of the room.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adapterMode, interviewId, integrity.activityMonitoring, integrity.fullscreen]);
+
+  // Camera: a self-view plus on-device face presence. Nothing is uploaded.
+  useEffect(() => {
+    if (integrity.camera === "off") return;
+    const camera = new CameraMonitor({
+      onStatus: setCameraStatus,
+      onEvent: (event) => eventQueueRef.current?.push(event),
+      getPlanQuestionId: planQuestionIdNow,
+      detectFaces: true,
+    });
+    cameraRef.current = camera;
+    void camera.start();
+    return () => {
+      camera.stop();
+      cameraRef.current = null;
+    };
+  }, [integrity.camera, planQuestionIdNow]);
+
+  // The submitted text, for the live "in your own words" check.
+  useEffect(() => {
+    if (adapterMode !== "openai" || !integrity.overlapCheck) return;
+    let cancelled = false;
+    getDocumentText(submissionId)
+      .then((doc) => {
+        if (cancelled || !doc || doc.text.length < 200) return;
+        docIndexRef.current = new DocumentIndex(doc.text);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      docIndexRef.current = null;
+    };
+  }, [adapterMode, submissionId, integrity.overlapCheck]);
+
+  const retryCamera = useCallback(() => {
+    void cameraRef.current?.restart();
+  }, []);
+
+  // The self-view <video> lives in the student tile; the monitor may be
+  // created before or after it mounts, so both sides attach.
+  const cameraVideoElRef = useRef<HTMLVideoElement | null>(null);
+  const attachCameraVideo = useCallback((el: HTMLVideoElement | null) => {
+    cameraVideoElRef.current = el;
+    cameraRef.current?.attachVideo(el);
+  }, []);
+  useEffect(() => {
+    if (cameraStatus === "on") cameraRef.current?.attachVideo(cameraVideoElRef.current);
+  }, [cameraStatus]);
 
   // ---- Section: transcript buffer ----
 
@@ -523,6 +722,15 @@ export function InterviewRoomClient({
     [beginFarewell],
   );
 
+  // ---- Section: silence nudges ----
+
+  const clearNudgeTimer = useCallback(() => {
+    if (nudgeTimerRef.current !== null) {
+      window.clearTimeout(nudgeTimerRef.current);
+      nudgeTimerRef.current = null;
+    }
+  }, []);
+
   // Inject text as if the student had typed it (skip / swap / guard notes),
   // once the server is idle. Cancels whatever the host is saying first so
   // the reaction is immediate. A note still queued when the farewell starts
@@ -548,6 +756,57 @@ export function InterviewRoomClient({
     };
     trySend();
   }, []);
+
+  // The student has been quiet on their turn. After `silenceNudgeSeconds`
+  // the host says one warm sentence; a good while later, once more, offering
+  // an easier angle or to leave the question for now. Never more than two
+  // per question, never while someone is speaking, never while paused or
+  // muted, never during the farewell, and never a countdown.
+  const armNudge = useCallback(() => {
+    clearNudgeTimer();
+    const seconds = integrityRef.current.silenceNudgeSeconds;
+    if (adapterMode !== "openai" || seconds <= 0) return;
+    if (farewellRef.current.started || finalAnswerHandledRef.current) return;
+    const questionIdx = lastDetectedQuestionIndexRef.current;
+    if (nudgeQuestionRef.current !== questionIdx) {
+      nudgeQuestionRef.current = questionIdx;
+      nudgeStageRef.current = 0;
+    }
+    if (nudgeStageRef.current >= MAX_NUDGES_PER_QUESTION) return;
+    const delay = nudgeStageRef.current === 0 ? seconds * 1000 : SECOND_NUDGE_DELAY_MS;
+    nudgeTimerRef.current = window.setTimeout(() => {
+      nudgeTimerRef.current = null;
+      if (farewellRef.current.started || finalAnswerHandledRef.current) return;
+      const adapter = adapterRef.current;
+      if (!adapter) return;
+      // Not a silence: someone is talking, the mic is off, or the timer is paused.
+      if (
+        studentSpeakingRef.current ||
+        hostSpeakingRef.current ||
+        pausedRef.current ||
+        !adapter.isMicEnabled()
+      ) {
+        nudgeTimerRef.current = window.setTimeout(() => {
+          nudgeTimerRef.current = null;
+          armNudgeRef.current();
+        }, 5000);
+        return;
+      }
+      const stage = (nudgeStageRef.current + 1) as 1 | 2;
+      nudgeStageRef.current = stage;
+      nudgedThisTurnRef.current = true;
+      injectUserText(buildSilenceNudgeDirective(hostLangRef.current, stage));
+      pushIntegrityEvent({
+        kind: "silence_nudge",
+        startedAt: new Date().toISOString(),
+        planQuestionId: planQuestionIdNow(),
+        payload: { stage, after_seconds: stage === 1 ? seconds : SECOND_NUDGE_DELAY_MS / 1000 },
+      });
+    }, delay);
+  }, [adapterMode, clearNudgeTimer, injectUserText, planQuestionIdNow, pushIntegrityEvent]);
+  useEffect(() => {
+    armNudgeRef.current = armNudge;
+  }, [armNudge]);
 
   // The final text of a turn. Both `transcript.done` and `item.done` land
   // here; the pacer dedupes them and keeps revealing at the voice's pace.
@@ -650,13 +909,83 @@ export function InterviewRoomClient({
           injectUserText(buildUnintelligibleDirective(hostLangRef.current, kind));
         };
 
+        // Timing of the turn that just ended, for the persisted answer. Both
+        // final events of a turn share one client id, so the server keeps
+        // the first row and drops the second.
+        const turnMetadata = () => {
+          const startedAt = speechStartedAtRef.current;
+          const stoppedAt = speechStoppedAtRef.current;
+          const hostStop = lastHostPlaybackStopAtRef.current;
+          const meta: Record<string, unknown> = {
+            question_index: lastDetectedQuestionIndexRef.current,
+            barge_in: bargeInPendingRef.current,
+            mute_toggles: muteTogglesRef.current,
+            muted_during_turn: mutedDuringTurnRef.current,
+            nudged: nudgedThisTurnRef.current,
+          };
+          if (hostStop !== null) meta.host_turn_ended_at = new Date(hostStop).toISOString();
+          if (startedAt !== null) {
+            meta.speech_started_at = new Date(startedAt).toISOString();
+            if (hostStop !== null && startedAt >= hostStop && startedAt - hostStop <= MAX_LATENCY_MS) {
+              meta.latency_ms = startedAt - hostStop;
+            }
+            if (stoppedAt !== null && stoppedAt >= startedAt) {
+              meta.speech_stopped_at = new Date(stoppedAt).toISOString();
+              meta.speech_ms = stoppedAt - startedAt;
+            }
+          }
+          const counters = activityRef.current?.drainCounters();
+          if (counters) {
+            meta.hidden_ms_since_last = counters.hiddenMs;
+            meta.blur_count_since_last = counters.blurCount;
+          }
+          return {
+            clientId: currentTurnIdRef.current ?? makeTurnId(),
+            startedAt: startedAt !== null ? new Date(startedAt).toISOString() : undefined,
+            endedAt: stoppedAt !== null ? new Date(stoppedAt).toISOString() : undefined,
+            metadata: meta,
+          };
+        };
+        const resetTurnCounters = () => {
+          bargeInPendingRef.current = false;
+          muteTogglesRef.current = 0;
+          mutedDuringTurnRef.current = false;
+          nudgedThisTurnRef.current = false;
+        };
+
+        // The last answer matched the submitted document almost verbatim:
+        // ask (warmly, at most twice per interview, once per question) for
+        // the idea in the student's own words. Using the work is allowed;
+        // the follow-up is what the lecturer reads.
+        const maybeAskOwnWords = (text: string) => {
+          const index = docIndexRef.current;
+          if (!index || !integrityRef.current.overlapCheck) return;
+          if (farewellRef.current.started || finalAnswerHandledRef.current) return;
+          if (ownWordsCountRef.current >= MAX_OWN_WORDS_PROMPTS) return;
+          const qid = currentPlanQuestionId() ?? "_intro";
+          if (ownWordsQuestionsRef.current.has(qid)) return;
+          const result = computeOverlap(text, index);
+          if (!isSignificantOverlap(result)) return;
+          ownWordsQuestionsRef.current.add(qid);
+          ownWordsCountRef.current += 1;
+          injectUserText(buildOwnWordsDirective(hostLangRef.current));
+          pushIntegrityEvent({
+            kind: "own_words_prompt",
+            startedAt: new Date().toISOString(),
+            planQuestionId: currentPlanQuestionId(),
+            payload: { longest_run: result.longestRun, share: Number(result.score.toFixed(2)) },
+          });
+        };
+
         const handleStudentUtterance = (text: string) => {
           if (!text) return;
           // Our own skip / swap / guard notes come back as user items: keep
           // them in the transcript (the report hides them), never judge or
           // count them.
           if (isHostDirective(text)) {
-            sessionRef.current.persistStudentMessage(text, currentPlanQuestionId());
+            sessionRef.current.persistStudentMessage(text, currentPlanQuestionId(), {
+              metadata: { kind: "directive_echo" },
+            });
             return;
           }
           const verdict = assessStudentUtterance(text, {
@@ -667,9 +996,11 @@ export function InterviewRoomClient({
             rejectStudentTurn(verdict);
             return;
           }
-          sessionRef.current.persistStudentMessage(text, currentPlanQuestionId());
+          sessionRef.current.persistStudentMessage(text, currentPlanQuestionId(), turnMetadata());
+          resetTurnCounters();
           if (text.trim().length <= 2) return;
           studentAnswerCountRef.current += 1;
+          maybeAskOwnWords(text);
           if (waitingForFinalAnswerRef.current && !finalAnswerGivenRef.current) {
             // The last planned question has been answered. Do NOT close
             // here — the host still has to react and say goodbye. The
@@ -677,6 +1008,15 @@ export function InterviewRoomClient({
             finalAnswerGivenRef.current = true;
             armFinalAnswerWatchdog(FINAL_ANSWER_WATCHDOG_MS);
           }
+        };
+
+        // The room is going away without a proper close (connection drop,
+        // failure): one keepalive request records it.
+        const reportDisconnect = (reason: string) => {
+          const s = sessionRef.current;
+          if (s.state === "completed" || s.state === "closing") return;
+          void eventQueueRef.current?.flush({ keepalive: true });
+          void recordDisconnect(interviewId, reason, currentPlanQuestionId());
         };
 
         const adapter = new OpenAIRealtimeAdapter({
@@ -688,10 +1028,30 @@ export function InterviewRoomClient({
             // do for the opening (warm welcome + first question), so a
             // bare response.create is enough. cancelActiveResponse() is a
             // no-op when nothing is in flight, but if a stale response
-            // somehow exists it clears the way first.
+            // somehow exists it clears the way first. After a drop the
+            // kick is a resume note instead, so the host continues from
+            // the question the conversation was on.
             try {
               adapter.cancelActiveResponse();
-              adapter.sendEvent({ type: "response.create" });
+              const r = resumeRef.current;
+              if (r.lastQuestionIndex >= 0) {
+                sessionRef.current.setQuestionIndex(r.lastQuestionIndex);
+                adapter.sendUserText(
+                  buildResumeDirective(
+                    hostLangRef.current,
+                    r.lastQuestionIndex + 1,
+                    r.answeredQuestionIds.length,
+                  ),
+                );
+                pushIntegrityEvent({
+                  kind: "reconnect",
+                  startedAt: new Date().toISOString(),
+                  planQuestionId: cappedQuestions[r.lastQuestionIndex]?.id ?? null,
+                  payload: { attempt },
+                });
+              } else {
+                adapter.sendEvent({ type: "response.create" });
+              }
             } catch {
               /* data channel may be racing; the next user audio will trigger anyway */
             }
@@ -699,10 +1059,12 @@ export function InterviewRoomClient({
           onClose: () => {
             const s = sessionRef.current;
             if (s.state !== "completed" && s.state !== "closing") {
+              reportDisconnect("data_channel_closed");
               s.fail("data_channel_closed");
             }
           },
           onError: (err) => {
+            reportDisconnect(err.message);
             setAdapterError(err.message);
             sessionRef.current.fail(err.message);
           },
@@ -733,10 +1095,16 @@ export function InterviewRoomClient({
           },
           onUserSpeechStart: () => {
             studentSpeakingRef.current = true;
+            clearNudgeTimer();
+            turnSeqRef.current += 1;
+            currentTurnIdRef.current = `s-${turnSeqRef.current}-${makeTurnId()}`;
+            speechStartedAtRef.current = Date.now();
+            speechStoppedAtRef.current = null;
             sessionRef.current.startRecording();
           },
           onUserSpeechStop: () => {
             studentSpeakingRef.current = false;
+            speechStoppedAtRef.current = Date.now();
             sessionRef.current.finishRecording(undefined, { persist: false });
           },
           onAssistantMessageDone: (text) => {
@@ -793,6 +1161,10 @@ export function InterviewRoomClient({
             sessionRef.current.persistAssistantMessage(
               text,
               currentPlanQuestionId(),
+              {
+                clientId: `h-${makeTurnId()}`,
+                metadata: { question_index: lastDetectedQuestionIndexRef.current },
+              },
             );
             // Farewell detection. A strong "the interview is over" line ends
             // the session at any time (after at least one answer, so a
@@ -824,11 +1196,17 @@ export function InterviewRoomClient({
             getPacer().playbackStarted(performance.now(), responseId);
             syncCaptions();
           },
-          onAssistantPlaybackStop: (responseId) => {
+          onAssistantPlaybackStop: (responseId, reason) => {
             const pacer = getPacer();
             pacer.playbackStopped(performance.now(), responseId);
             syncCaptions();
             saveCaptionRate(hostLangRef.current, pacer.charsPerSecond);
+            // The floor is the student's from here: start the latency clock
+            // and the (gentle) silence clock. A cleared buffer means the
+            // student spoke over the host.
+            lastHostPlaybackStopAtRef.current = Date.now();
+            if (reason === "cleared") bargeInPendingRef.current = true;
+            armNudge();
           },
           onUserTranscriptDone: handleStudentUtterance,
           // VAD opened a turn but no words came out of it: noise.
@@ -853,6 +1231,26 @@ export function InterviewRoomClient({
                 /* noop */
               }
               beginFarewell("tool");
+            } else if (call.name === "flag_answer") {
+              // A silent review note for the lecturer. The host keeps
+              // talking as if nothing happened (default createResponse).
+              try {
+                adapter.respondToTool(call.callId, { ok: true });
+              } catch {
+                /* noop */
+              }
+              if (integrityRef.current.hostFlags) {
+                const a = call.args;
+                void recordInterviewFlag(interviewId, {
+                  category: typeof a.category === "string" ? a.category : "other",
+                  description:
+                    typeof a.description === "string" ? a.description : "",
+                  quote: typeof a.quote === "string" ? a.quote : null,
+                  confidence:
+                    typeof a.confidence === "string" ? a.confidence : "low",
+                  planQuestionId: currentPlanQuestionId(),
+                });
+              }
             } else if (call.name === "ask_question_at_index") {
               try {
                 // Legacy compatibility no-op. We do NOT drive question
@@ -915,6 +1313,7 @@ export function InterviewRoomClient({
 
     return () => {
       cancelled = true;
+      clearNudgeTimer();
       adapterRef.current?.disconnect();
       adapterRef.current = null;
       micStream?.getTracks().forEach((tk) => tk.stop());
@@ -923,6 +1322,7 @@ export function InterviewRoomClient({
   }, [
     adapterMode,
     interviewId,
+    attempt,
     appendTranscriptDelta,
     finalizeTranscript,
     getPacer,
@@ -932,9 +1332,26 @@ export function InterviewRoomClient({
     closeAfterHostSilent,
     armFinalAnswerWatchdog,
     clearClosingTimers,
+    clearNudgeTimer,
+    armNudge,
     injectUserText,
+    pushIntegrityEvent,
     cappedQuestions,
   ]);
+
+  // Once the farewell starts or the room closes, no nudge may fire.
+  useEffect(() => {
+    if (wrappingUp || session.state === "closing" || session.state === "completed") {
+      clearNudgeTimer();
+    }
+  }, [wrappingUp, session.state, clearNudgeTimer]);
+
+  // The "we're back" chip fades on its own.
+  useEffect(() => {
+    if (!showResumed) return;
+    const id = window.setTimeout(() => setShowResumed(false), 9000);
+    return () => window.clearTimeout(id);
+  }, [showResumed]);
 
   // ---- Section: timers + keyboard shortcuts ----
 
@@ -966,7 +1383,16 @@ export function InterviewRoomClient({
     const nextEnabled = !adapter.isMicEnabled();
     const result = adapter.setMicEnabled(nextEnabled);
     setMuted(!result);
-  }, []);
+    muteTogglesRef.current += 1;
+    if (!result) {
+      mutedDuringTurnRef.current = true;
+      pushIntegrityEvent({
+        kind: "mic_muted",
+        startedAt: new Date().toISOString(),
+        planQuestionId: planQuestionIdNow(),
+      });
+    }
+  }, [planQuestionIdNow, pushIntegrityEvent]);
 
   // Spacebar mute toggle for live mode.
   useEffect(() => {
@@ -1173,6 +1599,11 @@ export function InterviewRoomClient({
           </div>
         </div>
         <div className="row" style={{ gap: 12, flexShrink: 0 }}>
+          {showResumed ? (
+            <Badge variant="mint" className="hide-sm">
+              {t("interview.resumedChip")}
+            </Badge>
+          ) : null}
           <Badge variant="pink" className="room-rec">
             <span
               className="dot"
@@ -1301,7 +1732,35 @@ export function InterviewRoomClient({
               level={isLive ? userLevel : undefined}
               speaking={isLive ? studentSpeaking : recording}
               muted={muted}
+              cameraStatus={integrity.camera === "off" ? undefined : cameraStatus}
+              cameraLabel={t("interview.cameraOn")}
+              videoRef={attachCameraVideo}
             />
+            {integrity.camera !== "off" &&
+            (cameraStatus === "denied" ||
+              cameraStatus === "off" ||
+              cameraStatus === "unavailable") ? (
+              <div className="room-cam-notice fade-up" role="status">
+                <div style={{ fontWeight: 800, fontSize: 13 }}>
+                  {cameraStatus === "denied"
+                    ? t("interview.cameraDenied")
+                    : cameraStatus === "unavailable"
+                      ? t("interview.cameraUnavailable")
+                      : t("interview.cameraOff")}
+                </div>
+                <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  {t("interview.cameraNoticeBody")}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginTop: 10, padding: "8px 12px", fontSize: 12 }}
+                  onClick={retryCamera}
+                >
+                  {t("interview.cameraReconnect")}
+                </button>
+              </div>
+            ) : null}
             <QuestionProgress
               title={t("interview.questionOf", {
                 current: currentQuestionNumber,
@@ -1603,7 +2062,20 @@ export function InterviewRoomClient({
             zIndex: 20,
           }}
         >
-          {t("interview.connectionError")}: {adapterError}
+          <div>
+            {t("interview.connectionError")}: {adapterError}
+          </div>
+          <div className="text-muted" style={{ fontSize: 12, marginTop: 6, color: "#9F1239" }}>
+            {t("interview.reconnectHint")}
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ marginTop: 10, padding: "8px 12px", fontSize: 12 }}
+            onClick={() => window.location.reload()}
+          >
+            {t("interview.reconnectPage")}
+          </button>
         </div>
       )}
 

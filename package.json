@@ -11,6 +11,7 @@
     "check": "npm run typecheck && npm run lint"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.1.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
     "clsx": "^2.1.1",

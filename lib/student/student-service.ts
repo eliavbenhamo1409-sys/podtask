@@ -29,6 +29,7 @@ import {
 } from "./mock-data";
 import { SUBMISSION_PROCESSING_ORDER } from "./status";
 import type {
+  InterviewStartOutcome,
   InterviewTranscript,
   StudentAssignment,
   StudentDashboard,
@@ -43,6 +44,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { MOCK_MODE } from "@/lib/env";
 import { isUuidLike } from "@/lib/utils";
+import { resolveIntegritySettings } from "@/lib/integrity/settings";
+import type { HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
+
+/** Feature flags the demo walkthrough runs with (no document, no host tools). */
+export function mockIntegritySettings() {
+  return resolveIntegritySettings(
+    { integrity: { camera: "on", overlap_check: false, host_flags: false } },
+    { personal: false },
+  );
+}
 
 // =============================================================================
 // Mode + id helpers
@@ -515,21 +526,92 @@ export async function getInterviewWithAssignment(interviewId: string) {
 
 export async function startInterview(
   interviewId: string,
-): Promise<StudentInterview | null> {
+): Promise<InterviewStartOutcome> {
   if (shouldUseRealBackend(interviewId)) {
     const { startInterviewSb } = await import("./student-service-supabase");
     const sb = await getSb();
     return await startInterviewSb(sb, interviewId);
   }
   const interview = findMockInterview(interviewId);
-  if (!interview) return null;
+  if (!interview) return { ok: false, error: "not_found" };
   interview.status = "in_progress";
   interview.startedAt = new Date().toISOString();
   interview.currentState = "host_intro";
   if (interview.questions.length === 0) {
     interview.questions = MOCK_INTERVIEW_QUESTIONS as StudentInterviewQuestion[];
   }
-  return interview;
+  return {
+    ok: true,
+    resumed: false,
+    attempt: 1,
+    questions: interview.questions,
+    settings: mockIntegritySettings(),
+    resume: { lastQuestionIndex: -1, answeredQuestionIds: [] },
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Integrity: consent, telemetry, host flags (real rows only; demo ids no-op)
+// -----------------------------------------------------------------------------
+
+export async function recordConsent(
+  interviewId: string,
+  version: string,
+  locale: string,
+): Promise<boolean> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { recordConsentSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    return await recordConsentSb(sb, interviewId, version, locale);
+  }
+  return true;
+}
+
+export async function recordIntegrityEvents(
+  interviewId: string,
+  events: IntegrityClientEvent[],
+  opts: { keepalive?: boolean } = {},
+): Promise<void> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { recordIntegrityEventsSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    await recordIntegrityEventsSb(sb, interviewId, events, opts);
+  }
+}
+
+export async function recordInterviewFlag(
+  interviewId: string,
+  flag: HostFlagInput,
+): Promise<boolean> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { recordInterviewFlagSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    return await recordInterviewFlagSb(sb, interviewId, flag);
+  }
+  return true;
+}
+
+export async function recordDisconnect(
+  interviewId: string,
+  reason: string,
+  planQuestionId: string | null,
+): Promise<void> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { recordDisconnectSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    await recordDisconnectSb(sb, interviewId, reason, planQuestionId);
+  }
+}
+
+export async function getDocumentText(
+  submissionId: string,
+): Promise<{ text: string; exact: boolean } | null> {
+  if (shouldUseRealBackend(submissionId)) {
+    const { getDocumentTextSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    return await getDocumentTextSb(sb, submissionId);
+  }
+  return null;
 }
 
 /**
@@ -595,6 +677,10 @@ export async function saveInterviewMessage(input: {
   messageType: "question" | "answer" | "followup" | "system" | "summary";
   content: string;
   planQuestionId?: string | null;
+  clientId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  metadata?: Record<string, unknown>;
 }): Promise<{ ok: boolean }> {
   if (shouldUseRealBackend(input.interviewId)) {
     const { saveInterviewMessageInvokeSb } = await import(

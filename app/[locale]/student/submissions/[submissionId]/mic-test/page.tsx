@@ -18,6 +18,7 @@ export default async function MicTestPage({ params }: MicTestPageProps) {
     <MicTestClient
       submissionId={submissionId}
       interviewId={lobby.interview.id}
+      cameraMode={lobby.assignment.integrity?.camera ?? "on"}
     />
   );
 }

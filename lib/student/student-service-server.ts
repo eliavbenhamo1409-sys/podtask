@@ -41,7 +41,9 @@ import {
 } from "./student-service-supabase";
 import { MOCK_MODE } from "@/lib/env";
 import { isUuidLike } from "@/lib/utils";
+import { mockIntegritySettings } from "./student-service";
 import type {
+  InterviewStartOutcome,
   StudentAssignment,
   StudentDashboard,
   StudentHistoryEntry,
@@ -144,20 +146,27 @@ export const getInterviewWithAssignment = cache(async function getInterviewWithA
 
 export async function startInterview(
   interviewId: string,
-): Promise<StudentInterview | null> {
+): Promise<InterviewStartOutcome> {
   if (await shouldUseRealBackend(interviewId)) {
     const sb = await getSb();
     return await startInterviewSb(sb, interviewId);
   }
   const interview = findMockInterview(interviewId);
-  if (!interview) return null;
+  if (!interview) return { ok: false, error: "not_found" };
   interview.status = "in_progress";
   interview.startedAt = new Date().toISOString();
   interview.currentState = "host_intro";
   if (interview.questions.length === 0) {
     interview.questions = MOCK_INTERVIEW_QUESTIONS as StudentInterviewQuestion[];
   }
-  return interview;
+  return {
+    ok: true,
+    resumed: false,
+    attempt: 1,
+    questions: interview.questions,
+    settings: mockIntegritySettings(),
+    resume: { lastQuestionIndex: -1, answeredQuestionIds: [] },
+  };
 }
 
 export const getReportForInterview = cache(async function getReportForInterview(

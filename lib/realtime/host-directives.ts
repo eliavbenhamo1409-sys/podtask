@@ -186,3 +186,88 @@ export function buildFarewellInstructions(
     .filter(Boolean)
     .join(" ");
 }
+
+// ---------------------------------------------------------------------------
+// Conversation-care directives (integrity work, 2026-10-14). All of them are
+// phrased so the host stays warm: no deadlines, no suspicion, no mention of
+// monitoring. Keep the wording in sync with the "conversation care" section
+// of supabase/functions/_shared/realtime-instructions.ts, and never use a
+// phrase that lib/realtime/host-text-heuristics.ts reads as a transition to
+// the next planned question ("השאלה הבאה", "next question", "let's move on").
+// ---------------------------------------------------------------------------
+
+export type SilenceNudgeStage = 1 | 2;
+
+/**
+ * The student has been silent on their turn for a while. Stage 1 reassures
+ * and offers to narrow the question; stage 2 (a good while later) offers a
+ * simpler angle or to leave the question for now. Never a countdown.
+ */
+export function buildSilenceNudgeDirective(
+  language: string,
+  stage: SilenceNudgeStage,
+): string {
+  if (language === "he") {
+    return [
+      "[הודעת מערכת] הסטודנט/ית שותק/ת כבר זמן מה בתורו/ה. זה לא אירוע וזה לא בעיה.",
+      stage === 1
+        ? "אמרי משפט קצר, חם ומרגיע אחד בלבד, למשל: \"קחי את הזמן, גם כיוון מחשבה ראשוני זה מצוין\" או \"רוצה שאמקד קצת את השאלה?\", ואז המתיני בשקט."
+        : "אמרי משפט קצר וחם אחד שמציע זווית קלה יותר, למשל: \"אפשר גם להסביר במילים פשוטות, לא צריך תשובה מושלמת\" או \"אם השאלה פחות ברורה, ננסה אותה מזווית אחרת\", ואם תרצי הוסיפי שאפשר גם להשאיר את זה לעכשיו ולחזור לזה בהמשך. ואז המתיני בשקט.",
+      "אל תחזרי על הערה שכבר אמרת, אל תזכירי זמן או שעון, אל תכריזי על מספר שאלה חדש ואל תעברי לשאלה אחרת מהרשימה. אל תקריאי את ההודעה הזו בקול.",
+    ].join(" ");
+  }
+  const lang = languageName(language);
+  return [
+    "[SYSTEM NOTE] The student has been quiet on their turn for a while. This is not an event and not a problem.",
+    stage === 1
+      ? `Say exactly one short, warm, reassuring sentence in ${lang}, for example "Take your time, even a first thought is great" or "Would you like me to narrow the question a little?", then wait quietly.`
+      : `Say one short, warm sentence in ${lang} that offers an easier angle, for example "You can also explain it in simple words, it does not have to be perfect" or "If the question is unclear, let's try it from another angle", and if you like add that it is fine to leave it for now and come back to it later. Then wait quietly.`,
+    "Do not repeat a remark you already made, do not mention time or clocks, do not announce a new question ordinal and do not switch to another planned question. Do not read this note aloud.",
+  ].join(" ");
+}
+
+/**
+ * The last answer matched the submitted document almost word for word. The
+ * host is told to ask, warmly and once, for the idea in the student's own
+ * words; reading from your own work is explicitly allowed.
+ */
+export function buildOwnWordsDirective(language: string): string {
+  if (language === "he") {
+    return [
+      "[הודעת מערכת] התשובה האחרונה חופפת כמעט מילה במילה לקטע מהעבודה שהוגשה. זה בסדר גמור, מותר להיעזר בעבודה.",
+      "הגיבי בחיוב ובקצרה, ואז בקשי בנועם, פעם אחת, לשמוע את אותו רעיון במילים של הסטודנט/ית, למשל: \"מצוין, ואיך היית מסבירה את הרעיון הזה במילים שלך?\" או \"נהדר, תסבירי לי את זה כאילו אני לא קראתי את העבודה\".",
+      "אל תרמזי על העתקה או חשד, אל תשפטי, אל תכריזי על מספר שאלה חדש. אל תקריאי את ההודעה הזו בקול.",
+    ].join(" ");
+  }
+  const lang = languageName(language);
+  return [
+    "[SYSTEM NOTE] The last answer matched a passage of the submitted document almost word for word. That is fine; using the work is allowed.",
+    `Acknowledge it briefly and warmly, then ask once, kindly, in ${lang}, to hear the same idea in the student's own words, for example "Great, and how would you explain that idea in your own words?" or "Lovely, explain it to me as if I had not read the paper".`,
+    "Do not hint at copying or suspicion, do not judge, do not announce a new question ordinal. Do not read this note aloud.",
+  ].join(" ");
+}
+
+/**
+ * The room reconnected after a drop. The host greets briefly and continues
+ * from the question the conversation was on instead of starting over.
+ */
+export function buildResumeDirective(
+  language: string,
+  questionNumber: number,
+  answeredCount: number,
+): string {
+  if (language === "he") {
+    return [
+      `[הודעת מערכת] החיבור נותק לרגע וחזר. אנחנו כבר באמצע הראיון: ${answeredCount} שאלות כבר נענו, והשיחה הייתה בשאלה ${questionNumber}.`,
+      "אל תתחילי מהתחלה ואל תחזרי על שאלות שכבר נענו. אמרי משפט קצר וחם אחד על זה שחזרנו, ואז המשיכי משאלה " +
+        `${questionNumber} מהרשימה (עם הכרזת המספר שלה), או מהשאלה שאחריה אם ${questionNumber} כבר נענתה.`,
+      "אל תזכירי תקלות או טכנולוגיה מעבר למשפט אחד, ואל תקריאי את ההודעה הזו בקול.",
+    ].join(" ");
+  }
+  const lang = languageName(language);
+  return [
+    `[SYSTEM NOTE] The connection dropped for a moment and is back. We are already mid-interview: ${answeredCount} questions were answered and the conversation was on question ${questionNumber}.`,
+    `Do not start over and do not repeat questions that were already answered. Say one short, warm sentence in ${lang} about being back, then continue from question ${questionNumber} of the plan (announcing its ordinal), or from the one after it if ${questionNumber} was already answered.`,
+    "Do not mention problems or technology beyond that one sentence, and do not read this note aloud.",
+  ].join(" ");
+}

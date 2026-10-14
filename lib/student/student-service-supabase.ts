@@ -15,11 +15,13 @@ import {
   type InterviewLanguage,
 } from "./interview-language";
 import type {
+  InterviewStartOutcome,
   InterviewTranscript,
   StudentAssignment,
   StudentDashboard,
   StudentHistoryEntry,
   StudentInterview,
+  StudentInterviewQuestion,
   StudentProfile,
   StudentSubmission,
 } from "./types";
@@ -27,8 +29,91 @@ import type {
   StudentAssignmentStatus,
   SubmissionStatus,
 } from "./status";
+import {
+  isPersonalCourseCode,
+  resolveIntegritySettings,
+  type IntegritySettings,
+} from "@/lib/integrity/settings";
+import type { HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
 
 type SbClient = SupabaseClient<Database>;
+
+/**
+ * Calls an Edge Function with the current session's access token. Used
+ * instead of `sb.functions.invoke` where the HTTP status matters (the
+ * interview-control function answers 409 / 412 with a JSON body) or where a
+ * keepalive request is needed (telemetry flushed on pagehide).
+ */
+async function callEdge<T>(
+  sb: SbClient,
+  name: string,
+  body: unknown,
+  opts: { keepalive?: boolean } = {},
+): Promise<{ status: number; data: T | null }> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const {
+    data: { session },
+  } = await sb.auth.getSession();
+  const token = session?.access_token;
+  if (!url || !anon || !token) return { status: 401, data: null };
+  const res = await fetch(`${url.replace(/\/$/, "")}/functions/v1/${name}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: anon,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    keepalive: opts.keepalive === true,
+  });
+  let data: T | null = null;
+  try {
+    data = (await res.json()) as T;
+  } catch {
+    data = null;
+  }
+  return { status: res.status, data };
+}
+
+interface OutlineQuestion {
+  id?: string;
+  topic?: string;
+  kind?: string | null;
+  question?: string | null;
+  recommended_seconds?: number;
+}
+
+function outlineToQuestions(raw: unknown): StudentInterviewQuestion[] {
+  const obj = (raw ?? null) as { questions?: OutlineQuestion[] } | null;
+  if (!obj || !Array.isArray(obj.questions)) return [];
+  return obj.questions
+    .filter((q) => q && typeof q.id === "string")
+    .map((q) => ({
+      id: q.id as string,
+      topic: typeof q.topic === "string" ? q.topic : "",
+      question: typeof q.question === "string" ? q.question : "",
+      recommendedSeconds:
+        typeof q.recommended_seconds === "number" ? q.recommended_seconds : 75,
+      kind: typeof q.kind === "string" ? q.kind : null,
+    }));
+}
+
+/**
+ * The planned questions through the `interview_outline` RPC: ids, topics and
+ * timing always, the question text only once the interview is over. The
+ * `interview_plans` table itself is not readable by the student before then.
+ */
+export async function getInterviewOutlineSb(
+  sb: SbClient,
+  interviewId: string,
+): Promise<StudentInterviewQuestion[]> {
+  const { data, error } = await sb.rpc("interview_outline", {
+    p_interview_id: interviewId,
+  });
+  if (error || !data) return [];
+  return outlineToQuestions(data);
+}
 
 /**
  * The signed-in student's id, read from the session JWT and verified locally
@@ -147,6 +232,7 @@ async function loadAssignmentsSb(
     due_at: string | null;
     interview_duration_minutes: number;
     status: string;
+    settings: unknown;
     course?:
       | { id: string; name: string; code: string; lecturer_name: string | null }
       | { id: string; name: string; code: string; lecturer_name: string | null }[]
@@ -175,7 +261,7 @@ async function loadAssignmentsSb(
     const q = sb
       .from("assignments")
       .select(
-        `id, title, description, instructions, due_at, interview_duration_minutes, status,
+        `id, title, description, instructions, due_at, interview_duration_minutes, status, settings,
          course:courses ( id, name, code, lecturer_name )`,
       )
       .eq("status", "published");
@@ -248,6 +334,9 @@ async function loadAssignmentsSb(
       submissionId: sub?.id,
       interviewId: intByAssignment.get(a.id)?.id,
       badgeKind: deriveBadge(status),
+      integrity: resolveIntegritySettings(a.settings, {
+        personal: isPersonalCourseCode(course?.code),
+      }),
     } satisfies StudentAssignment;
   });
 }
@@ -431,7 +520,7 @@ export async function getInterviewSb(
   sb: SbClient,
   interviewId: string,
 ): Promise<StudentInterview | null> {
-  type InterviewWithPlan = {
+  type InterviewRow = {
     id: string;
     submission_id: string;
     assignment_id: string;
@@ -441,27 +530,20 @@ export async function getInterviewSb(
     started_at: string | null;
     completed_at: string | null;
     duration_seconds: number | null;
-    plan?:
-      | { plan: unknown }
-      | { plan: unknown }[]
-      | null;
   };
 
-  const { data, error } = await sb
-    .from("interviews")
-    .select(
-      `*, plan:interview_plans ( plan )`,
-    )
-    .eq("id", interviewId)
-    .maybeSingle();
+  // The row and the outline are independent; one round trip for both. The
+  // outline carries the question text only for a finished interview.
+  const [{ data, error }, questions] = await Promise.all([
+    sb
+      .from("interviews")
+      .select("id, submission_id, assignment_id, status, current_state, language, started_at, completed_at, duration_seconds")
+      .eq("id", interviewId)
+      .maybeSingle(),
+    getInterviewOutlineSb(sb, interviewId),
+  ]);
   if (error || !data) return null;
-  const row = data as unknown as InterviewWithPlan;
-
-  const planRow = row.plan;
-  const planObj = Array.isArray(planRow) ? planRow[0] : planRow;
-  const plan = (planObj?.plan ?? null) as
-    | { questions?: { id: string; topic: string; question: string; recommended_seconds?: number }[] }
-    | null;
+  const row = data as unknown as InterviewRow;
 
   return {
     id: row.id,
@@ -474,13 +556,7 @@ export async function getInterviewSb(
     completedAt: row.completed_at ?? undefined,
     durationSeconds: row.duration_seconds ?? undefined,
     topics: [],
-    questions:
-      plan?.questions?.map((q) => ({
-        id: q.id,
-        topic: q.topic,
-        question: q.question,
-        recommendedSeconds: q.recommended_seconds ?? 120,
-      })) ?? [],
+    questions,
   };
 }
 
@@ -660,6 +736,10 @@ export async function saveInterviewMessageInvokeSb(
     messageType: "question" | "answer" | "followup" | "system" | "summary";
     content: string;
     planQuestionId?: string | null;
+    clientId?: string;
+    startedAt?: string;
+    endedAt?: string;
+    metadata?: Record<string, unknown>;
   },
 ): Promise<{ ok: boolean }> {
   const { data, error } = await sb.functions.invoke<
@@ -669,21 +749,149 @@ export async function saveInterviewMessageInvokeSb(
   return { ok: !!(data && "ok" in data && data.ok) };
 }
 
+// -----------------------------------------------------------------------------
+// Interview control (server-side state changes) + integrity telemetry
+// -----------------------------------------------------------------------------
+
+interface StartResponse {
+  ok: boolean;
+  error?: string;
+  status?: string;
+  resumed?: boolean;
+  attempt?: number;
+  outline?: { id: string; topic: string; kind?: string | null; recommendedSeconds?: number }[];
+  resume?: { lastQuestionIndex: number; answeredQuestionIds: string[] };
+  settings?: IntegritySettings;
+}
+
+/**
+ * ready -> in_progress through `interview-control`, or a resume of a running
+ * interview. Returns the outline (no question text), the resolved integrity
+ * settings and where to continue from.
+ */
+export async function startInterviewSb(
+  sb: SbClient,
+  interviewId: string,
+): Promise<InterviewStartOutcome> {
+  const { status, data } = await callEdge<StartResponse>(sb, "interview-control", {
+    action: "start",
+    interviewId,
+  });
+  if (data?.ok) {
+    return {
+      ok: true,
+      resumed: data.resumed === true,
+      attempt: typeof data.attempt === "number" ? data.attempt : 1,
+      questions: (data.outline ?? []).map((q) => ({
+        id: q.id,
+        topic: q.topic ?? "",
+        question: "",
+        recommendedSeconds: q.recommendedSeconds ?? 75,
+        kind: q.kind ?? null,
+      })),
+      settings:
+        data.settings ?? resolveIntegritySettings(null, { personal: false }),
+      resume: data.resume ?? { lastQuestionIndex: -1, answeredQuestionIds: [] },
+    };
+  }
+  const code = data?.error;
+  if (status === 404) return { ok: false, error: "not_found" };
+  if (
+    code === "consent_required" ||
+    code === "interview_completed" ||
+    code === "interview_unavailable" ||
+    code === "assignment_closed" ||
+    code === "plan_missing"
+  ) {
+    return { ok: false, error: code };
+  }
+  return { ok: false, error: "unknown" };
+}
+
+export async function recordConsentSb(
+  sb: SbClient,
+  interviewId: string,
+  version: string,
+  locale: string,
+): Promise<boolean> {
+  const { data } = await callEdge<{ ok: boolean }>(sb, "interview-control", {
+    action: "consent",
+    interviewId,
+    version,
+    locale,
+  });
+  return data?.ok === true;
+}
+
+export async function recordIntegrityEventsSb(
+  sb: SbClient,
+  interviewId: string,
+  events: IntegrityClientEvent[],
+  opts: { keepalive?: boolean } = {},
+): Promise<void> {
+  if (events.length === 0) return;
+  await callEdge(sb, "interview-control", { action: "events", interviewId, events }, opts);
+}
+
+export async function recordInterviewFlagSb(
+  sb: SbClient,
+  interviewId: string,
+  flag: HostFlagInput,
+): Promise<boolean> {
+  const { data } = await callEdge<{ ok: boolean }>(sb, "interview-control", {
+    action: "flag",
+    interviewId,
+    flag,
+  });
+  return data?.ok === true;
+}
+
+export async function recordDisconnectSb(
+  sb: SbClient,
+  interviewId: string,
+  reason: string,
+  planQuestionId: string | null,
+): Promise<void> {
+  await callEdge(
+    sb,
+    "interview-control",
+    { action: "disconnect", interviewId, reason, planQuestionId },
+    { keepalive: true },
+  );
+}
+
+/**
+ * The stored text of the student's own submission (their RLS lets them read
+ * it), used by the room's live "in your own words" check. For a PDF this is
+ * a model rendering, not the exact text; `exact` says which.
+ */
+export async function getDocumentTextSb(
+  sb: SbClient,
+  submissionId: string,
+): Promise<{ text: string; exact: boolean } | null> {
+  const { data, error } = await sb
+    .from("document_parses")
+    .select("markdown, metadata")
+    .eq("submission_id", submissionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.markdown) return null;
+  const source = (data.metadata as { source?: string } | null)?.source;
+  return { text: data.markdown, exact: source === "raw_text" };
+}
+
 export async function getInterviewTranscriptSb(
   sb: SbClient,
   interviewId: string,
 ): Promise<InterviewTranscript> {
-  const [{ data: messages }, { data: planRow }] = await Promise.all([
+  const [{ data: messages }, outline] = await Promise.all([
     sb
       .from("interview_messages")
       .select("speaker, content, plan_question_id, created_at")
       .eq("interview_id", interviewId)
       .order("created_at", { ascending: true }),
-    sb
-      .from("interview_plans")
-      .select("plan")
-      .eq("interview_id", interviewId)
-      .maybeSingle(),
+    getInterviewOutlineSb(sb, interviewId),
   ]);
 
   type Row = {
@@ -703,15 +911,11 @@ export async function getInterviewTranscriptSb(
       createdAt: r.created_at,
     }));
 
-  const planObj = (planRow?.plan ?? null) as
-    | { questions?: { id: string; topic: string; question: string }[] }
-    | null;
-  const plan =
-    planObj?.questions?.map((q) => ({
-      id: q.id,
-      topic: q.topic,
-      question: q.question,
-    })) ?? [];
+  const plan = outline.map((q) => ({
+    id: q.id,
+    topic: q.topic,
+    question: q.question,
+  }));
 
   return { messages: filtered, plan };
 }
@@ -734,21 +938,6 @@ export async function setInterviewLanguageSb(
     .select("id");
   if (error) return false;
   return (data?.length ?? 0) > 0;
-}
-
-export async function startInterviewSb(
-  sb: SbClient,
-  interviewId: string,
-): Promise<StudentInterview | null> {
-  await sb
-    .from("interviews")
-    .update({
-      status: "in_progress",
-      current_state: "host_intro",
-      started_at: new Date().toISOString(),
-    })
-    .eq("id", interviewId);
-  return getInterviewSb(sb, interviewId);
 }
 
 export async function uploadSelfInitiatedFileSb(

@@ -122,6 +122,15 @@ function reducer(
 
 export type InterviewAdapterMode = "mock" | "openai";
 
+/** Optional per-message details the live room attaches when persisting. */
+export interface PersistExtra {
+  /** Stable id of the turn; a second delivery of the same turn is dropped server-side. */
+  clientId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface UseInterviewSessionOptions {
   interviewId: string;
   questions: StudentInterviewQuestion[];
@@ -230,7 +239,11 @@ export function useInterviewSession({
     },
     // `planQuestionId` lets the live room bind a message to the question it
     // detected in the same tick (the ref below only updates after render).
-    persistAssistantMessage: (text: string, planQuestionId?: string | null) => {
+    persistAssistantMessage: (
+      text: string,
+      planQuestionId?: string | null,
+      extra?: PersistExtra,
+    ) => {
       void saveInterviewMessage({
         interviewId,
         speaker: "ai_host",
@@ -238,11 +251,16 @@ export function useInterviewSession({
         content: text,
         planQuestionId:
           planQuestionId !== undefined ? planQuestionId : currentPlanQuestionIdRef.current,
+        ...extra,
       }).catch(() => {
         /* best-effort; the transcript is a convenience, not a gate */
       });
     },
-    persistStudentMessage: (text: string, planQuestionId?: string | null) => {
+    persistStudentMessage: (
+      text: string,
+      planQuestionId?: string | null,
+      extra?: PersistExtra,
+    ) => {
       void saveInterviewMessage({
         interviewId,
         speaker: "student",
@@ -250,19 +268,25 @@ export function useInterviewSession({
         content: text,
         planQuestionId:
           planQuestionId !== undefined ? planQuestionId : currentPlanQuestionIdRef.current,
+        ...extra,
       }).catch(() => {
         /* best-effort */
       });
     },
     // Structured events the report generator understands, e.g.
     // "skipped_question:3" / "replaced_question:2".
-    persistSystemMessage: (content: string, planQuestionId: string | null) => {
+    persistSystemMessage: (
+      content: string,
+      planQuestionId: string | null,
+      extra?: PersistExtra,
+    ) => {
       void saveInterviewMessage({
         interviewId,
         speaker: "system",
         messageType: "system",
         content,
         planQuestionId,
+        ...extra,
       }).catch(() => {
         /* best-effort */
       });

@@ -20,7 +20,11 @@ const loadSupabase = () =>
 const STALE_GUEST_COOKIE_CLEAR =
   "pt_guest=; path=/; max-age=0; SameSite=Lax";
 
-export function LoginClient() {
+export function LoginClient({
+  initialMode = "student",
+}: {
+  initialMode?: "student" | "lecturer";
+}) {
   const t = useTranslations();
   const locale = useLocale();
   const router = useRouter();
@@ -29,6 +33,10 @@ export function LoginClient() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [magicSent, setMagicSent] = useState(false);
+  // "lecturer" switches the card to the lecturer entrance: same credentials
+  // sign-in, no guest access, and the dashboard as the destination. The
+  // server decides who is a lecturer; this only picks the destination.
+  const [mode, setMode] = useState<"student" | "lecturer">(initialMode);
   const mockMode = MOCK_MODE;
 
   useEffect(() => {
@@ -59,7 +67,7 @@ export function LoginClient() {
   // so the student would stay on this screen (seen on first visits from
   // Windows machines; any browser without an earlier session is affected).
   function enterStudio() {
-    window.location.assign(`/${locale}/student`);
+    window.location.assign(`/${locale}/${mode === "lecturer" ? "lecturer" : "student"}`);
   }
 
   async function handleSignIn(event: FormEvent) {
@@ -68,7 +76,7 @@ export function LoginClient() {
     setError(null);
 
     if (mockMode) {
-      router.push("/student");
+      router.push(mode === "lecturer" ? "/lecturer" : "/student");
       return;
     }
 
@@ -172,7 +180,7 @@ export function LoginClient() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${location.origin}/student`,
+          emailRedirectTo: `${location.origin}/${locale}/${mode === "lecturer" ? "lecturer" : "student"}`,
         },
       });
       if (error) setError(t("auth.errorGeneric"));
@@ -229,14 +237,18 @@ export function LoginClient() {
           </div>
 
           <div style={{ textAlign: "center" }}>
-            <Eyebrow showDot>{t("auth.title")}</Eyebrow>
+            <Eyebrow showDot>
+              {mode === "lecturer" ? t("auth.lecturerEyebrow") : t("auth.title")}
+            </Eyebrow>
             <h1
               className="title"
               style={{ fontSize: 28, marginTop: 12 }}
             >
-              {t("auth.title")}
+              {mode === "lecturer" ? t("auth.lecturerTitle") : t("auth.title")}
             </h1>
-            <p className="subtitle">{t("auth.subtitle")}</p>
+            <p className="subtitle">
+              {mode === "lecturer" ? t("auth.lecturerSubtitle") : t("auth.subtitle")}
+            </p>
           </div>
 
           <form onSubmit={handleSignIn} style={{ marginTop: 24 }}>
@@ -382,33 +394,67 @@ export function LoginClient() {
               />
             </div>
 
+            {mode === "student" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleGuest()}
+                  className="btn btn-ghost"
+                  disabled={pending}
+                  style={{
+                    width: "100%",
+                    gap: 8,
+                    fontWeight: 700,
+                    color: "rgb(var(--ink))",
+                  }}
+                >
+                  {t("auth.continueAsGuest")}
+                  <span className="icon-flip">
+                    <ArrowIcon size={16} />
+                  </span>
+                </button>
+                <div
+                  style={{
+                    textAlign: "center",
+                    fontSize: 12,
+                    color: "rgb(var(--muted))",
+                    marginTop: 4,
+                  }}
+                >
+                  {t("auth.guestHint")}
+                </div>
+              </>
+            ) : (
+              <div
+                style={{
+                  textAlign: "center",
+                  fontSize: 12,
+                  color: "rgb(var(--muted))",
+                  marginTop: 4,
+                }}
+              >
+                {t("auth.lecturerHint")}
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => void handleGuest()}
+              onClick={() => {
+                setError(null);
+                setMode((m) => (m === "lecturer" ? "student" : "lecturer"));
+              }}
               className="btn btn-ghost"
               disabled={pending}
               style={{
                 width: "100%",
+                marginTop: 14,
                 gap: 8,
                 fontWeight: 700,
-                color: "rgb(var(--ink))",
+                color: "rgb(var(--cyan))",
               }}
             >
-              {t("auth.continueAsGuest")}
-              <span className="icon-flip">
-                <ArrowIcon size={16} />
-              </span>
+              {mode === "lecturer" ? t("auth.studentEntry") : t("auth.lecturerEntry")}
             </button>
-            <div
-              style={{
-                textAlign: "center",
-                fontSize: 12,
-                color: "rgb(var(--muted))",
-                marginTop: 4,
-              }}
-            >
-              {t("auth.guestHint")}
-            </div>
           </form>
         </motion.div>
       </div>

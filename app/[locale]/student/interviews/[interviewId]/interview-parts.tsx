@@ -97,7 +97,19 @@ export function HostStage({
   );
 }
 
-/** The student's own tile: avatar that rings with their voice, mic meter. */
+export type TileCameraStatus =
+  | "idle"
+  | "starting"
+  | "on"
+  | "denied"
+  | "unavailable"
+  | "off";
+
+/**
+ * The student's own tile: avatar that rings with their voice, mic meter,
+ * and (when the assignment uses the camera) a small mirrored self-view with
+ * a quiet "camera on" dot. The video never leaves the browser.
+ */
 export function StudentTile({
   eyebrow,
   chip,
@@ -107,6 +119,9 @@ export function StudentTile({
   level,
   speaking,
   muted,
+  cameraStatus,
+  cameraLabel,
+  videoRef,
 }: {
   eyebrow: ReactNode;
   chip: ReactNode;
@@ -117,6 +132,10 @@ export function StudentTile({
   level?: number;
   speaking: boolean;
   muted: boolean;
+  /** Omit when the camera is not part of this interview. */
+  cameraStatus?: TileCameraStatus;
+  cameraLabel?: string;
+  videoRef?: (el: HTMLVideoElement | null) => void;
 }) {
   const ring = muted
     ? 0
@@ -139,9 +158,32 @@ export function StudentTile({
         {chip}
       </div>
       <div className="room-student-body">
-        <div className="room-avatar">
-          <span>{initial}</span>
-        </div>
+        {cameraStatus !== undefined ? (
+          <div
+            className="room-cam-wrap"
+            data-on={cameraStatus === "on" ? "true" : undefined}
+            aria-label={cameraStatus === "on" ? cameraLabel : undefined}
+          >
+            <video
+              ref={videoRef}
+              className="room-cam"
+              autoPlay
+              muted
+              playsInline
+            />
+            {cameraStatus !== "on" ? (
+              <div className="room-cam-fallback room-avatar" aria-hidden>
+                <span>{initial}</span>
+              </div>
+            ) : (
+              <span className="room-cam-dot" title={cameraLabel} aria-hidden />
+            )}
+          </div>
+        ) : (
+          <div className="room-avatar">
+            <span>{initial}</span>
+          </div>
+        )}
         <div className="room-student-name">{name}</div>
         <div className="room-student-status text-muted">{status}</div>
       </div>

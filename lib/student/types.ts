@@ -1,4 +1,5 @@
 import type { InterviewLanguage } from "./interview-language";
+import type { IntegritySettings } from "@/lib/integrity/settings";
 /**
  * UI-facing shapes for the student studio. These are what pages and
  * components consume; the DB rows are mapped into them in
@@ -36,6 +37,8 @@ export interface StudentAssignment {
   interviewId?: string;
   badgeKind: "next" | "todo" | "done";
   dueLabelKey?: "dueTomorrow" | "dueIn4Days" | "dueIn6Days" | "submittedApr28";
+  /** Resolved integrity feature flags of the assignment (camera, telemetry, nudges…). */
+  integrity?: IntegritySettings;
 }
 
 export interface StudentSubmission {
@@ -68,9 +71,35 @@ export interface StudentInterview {
 export interface StudentInterviewQuestion {
   id: string;
   topic: string;
+  /** Empty until the interview is over: the question text never reaches the browser early. */
   question: string;
   recommendedSeconds: number;
+  kind?: string | null;
 }
+
+/** What `interview-control` returns when the room opens (or reopens). */
+export interface InterviewStartResult {
+  ok: true;
+  resumed: boolean;
+  attempt: number;
+  questions: StudentInterviewQuestion[];
+  settings: IntegritySettings;
+  resume: { lastQuestionIndex: number; answeredQuestionIds: string[] };
+}
+
+export interface InterviewStartError {
+  ok: false;
+  error:
+    | "consent_required"
+    | "interview_completed"
+    | "interview_unavailable"
+    | "assignment_closed"
+    | "plan_missing"
+    | "not_found"
+    | "unknown";
+}
+
+export type InterviewStartOutcome = InterviewStartResult | InterviewStartError;
 
 export interface InterviewTranscriptMessage {
   speaker: "ai_host" | "student" | "system";

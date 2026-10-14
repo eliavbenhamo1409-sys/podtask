@@ -11,8 +11,9 @@
 //   20260506000003_anonymous_auth_support.sql), which seeds the profile row
 //   with the Demo sandbox institution and locale.
 // - This endpoint is unauthenticated by design (it is the login path). It
-//   creates real auth.users rows, so production deployments should layer a
-//   CAPTCHA or rate-limit in front of it to avoid abuse.
+//   creates real auth.users rows, so it is rate limited per client address
+//   (and globally) through `rate_limit_events`. Guest interviews carry no
+//   identity claim: the lecturer report marks them as guest sessions.
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 
@@ -21,10 +22,28 @@ declare const Deno: {
   env: { get(key: string): string | undefined };
 };
 
+const WINDOW_MS = 60 * 60 * 1000;
+const MAX_PER_ADDRESS_PER_HOUR = 6;
+const MAX_GLOBAL_PER_HOUR = 150;
+
 function randomPassword(): string {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashAddress(address: string): Promise<string> {
+  const data = new TextEncoder().encode(`guest:${address}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest).slice(0, 12), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+function clientAddress(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for") ?? "";
+  const first = forwarded.split(",")[0]?.trim();
+  return first || req.headers.get("cf-connecting-ip") || "unknown";
 }
 
 Deno.serve(async (req) => {
@@ -36,6 +55,25 @@ Deno.serve(async (req) => {
   const locale = localeRaw === "en" ? "en" : "he";
 
   const sb = serviceClient();
+  const since = new Date(Date.now() - WINDOW_MS).toISOString();
+  const addressKey = `guest_create:${await hashAddress(clientAddress(req))}`;
+
+  const [{ count: perAddress }, { count: global }] = await Promise.all([
+    sb
+      .from("rate_limit_events")
+      .select("id", { count: "exact", head: true })
+      .eq("key", addressKey)
+      .gte("window_start", since),
+    sb
+      .from("rate_limit_events")
+      .select("id", { count: "exact", head: true })
+      .like("key", "guest_create:%")
+      .gte("window_start", since),
+  ]);
+  if ((perAddress ?? 0) >= MAX_PER_ADDRESS_PER_HOUR || (global ?? 0) >= MAX_GLOBAL_PER_HOUR) {
+    return errorResponse("guest_rate_limited", 429);
+  }
+  await sb.from("rate_limit_events").insert({ key: addressKey, count: 1 });
 
   const email = `guest-${crypto.randomUUID()}@guest.podtask.app`;
   const password = randomPassword();

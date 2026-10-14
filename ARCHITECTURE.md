@@ -149,12 +149,9 @@ rendering. Rules that keep pages fast:
 
 1. ~~Repo ≠ production for two edge functions.~~ Reconciled 2026-10-01
    (`create-realtime-session` v13, `generate-report` v6 deployed from the repo).
-2. **`create-realtime-session` has no status guard.** One interview minted
-   1,677 client secrets; the lobby/room can re-invoke it freely. Add a guard
-   on `interviews.status` and/or a rate limit.
-3. **`complete-interview` is not idempotent.** A second call regresses
-   `submissions.status` from `report_ready` to `interview_completed` and
-   overwrites `completed_at`/`duration_seconds`.
+2. ~~`create-realtime-session` has no status guard.~~ Fixed 2026-10-14: requires
+   `in_progress` and is rate limited per interview (see §8).
+3. ~~`complete-interview` is not idempotent.~~ Fixed 2026-10-14.
 4. ~~Live mode never advances `questionIndex`.~~ Fixed 2026-10-01: the room
    mirrors the host's ordinal announcements into the FSM and binds persisted
    messages to the detected plan question.
@@ -163,8 +160,9 @@ rendering. Rules that keep pages fast:
    to the host is rate-limited (4 s) so a double event sends one note.
 6. **Real-mode dashboard cards all link to `/upload`**: the server pages resolve
    card routes through mock-data lookups that return `undefined` for UUIDs.
-7. **`create-guest-session` is unauthenticated** and creates real auth users
-   with no CAPTCHA or rate limit.
+7. **`create-guest-session` is unauthenticated** and creates real auth users;
+   rate limited since 2026-10-14 (6 per address per hour, 150 global), still
+   no CAPTCHA.
 8. **Visible-but-small UI bugs:** the student avatar initial in the room is
    sliced from a translated greeting (blank in Hebrew); `Link` wrapping
    `button` in two cards is invalid HTML; `animation: pulse` references a
@@ -173,3 +171,67 @@ rendering. Rules that keep pages fast:
    in the working tree contradicts the version already applied in production.
 10. `evaluate-answer` and `_shared/providers.ts` are dormant mock code that is
     still deployed; `podtask 2/` is the static design prototype.
+
+## 8. Integrity system and lecturer dashboard (2026-10-14)
+
+Goal: fewer opportunities for outside help during the interview without
+turning it into an interrogation. Every signal is EVIDENCE for a human
+reviewer; nothing fails a student automatically.
+
+### Trust model
+
+| Layer | Written by | Trust |
+| --- | --- | --- |
+| `interviews.status`, `started_at`, `completed_at`, `metadata.attempts` | `interview-control` / `complete-interview` (service role) | server fact |
+| `system_events` `realtime.client_secret.created` | `create-realtime-session` | server fact (session count) |
+| `interview_messages` (+ `metadata` timing) | `save-interview-message`, from the room | **client telemetry**: the browser owns the OpenAI data channel |
+| `interview_integrity_events` (`source = client`) | `interview-control` `events`, from the room | client telemetry |
+| `interview_integrity_events` (`source = server`) | `interview-control` (`session_resumed`) | server fact |
+| `interview_flags` `host_tool` | the host's `flag_answer` tool, relayed by the room | host impression, client-relayed |
+| `interview_flags` `server_*` | `complete-interview` → `_shared/integrity.ts` | server analysis over stored rows |
+| `answer_evaluations` | `evaluate-answer` | knowledge only, never integrity |
+
+Students can no longer insert transcript rows directly, read the plan before
+the interview is over, or change interview / submission status
+(`20260514000002_integrity_lockdown.sql`: policies + `guard_*` triggers).
+Profiles: `guard_profile_self_update` blocks role / institution changes
+from PostgREST; a lecturer role is granted by SQL only.
+
+### Student flow (what changed)
+
+lobby → **consent** (`/student/submissions/:id/consent`, acknowledgement
+recorded server-side, version `CONSENT_VERSION`) → mic + camera check →
+room. The room page calls `interview-control` `start` (ready → in_progress,
+or resume), which returns the outline (ids + topics, no text), the resolved
+`IntegritySettings` and the resume point. The room then:
+
+- attaches per-turn timing to each persisted answer (`lib/integrity/types.ts`
+  `TurnTimingMetadata`: latency from the host's playback stop, speech length,
+  barge-in, mute toggles, hidden/blur counters) with a `clientId` for dedupe;
+- runs `ActivityMonitor` (visibility, blur, fullscreen, pagehide, offline)
+  and `CameraMonitor` (self-view + MediaPipe face presence on-device, no
+  frames leave the browser; the wasm runtime is loaded from jsDelivr, the
+  model from `/models/`) and ships events through `IntegrityEventQueue`;
+- nudges gently after `silenceNudgeSeconds` of silence on the student's turn
+  (two per question at most, `buildSilenceNudgeDirective`), and asks once for
+  the idea "in your own words" when an answer matches the submitted text
+  (`lib/integrity/overlap.ts`, `buildOwnWordsDirective`);
+- relays the host's `flag_answer` calls, reports disconnects, and resumes
+  from the last question after a reload (`buildResumeDirective`).
+
+Feature flags live in `assignments.settings.integrity` and are resolved by
+`resolveIntegritySettings` (camera off/on/required, activity monitoring,
+silence nudge seconds, overlap check, host flags, per-answer evaluation,
+consent). Personal (self-initiated) assignments default to no camera and no
+activity telemetry.
+
+### Lecturer side
+
+`/[locale]/lecturer` (layout = role gate on `profiles.role`), dashboard
+(courses, assignments, counts, create course / assignment, enrol students by
+e-mail through `lecturer_create_course` / `lecturer_add_course_members`),
+assignment page (roster with status, score, flags, review state), interview
+report (score + rubric, per-question answers with the knowledge evaluation,
+integrity signals with limitations, browser/camera events, transcript, review
+panel → `interview_reviews`). Data layer: `lib/lecturer/*`; all reads run
+under the lecturer's session and the lecturer RLS policies.

@@ -6,8 +6,9 @@ AI "podcast host" (אריה / Aria). The interview itself runs in a language the
 picks in the lobby (he / en / ar, `interviews.language`); the host speaks, listens and
 is transcribed in that language only. The goal is to gauge how well the student
 understands their own work. After the interview the system scores the answers and
-produces a report for the lecturer. Only the **student studio** is built so far;
-the lecturer/admin side exists in the schema but has no UI.
+produces a report for the lecturer. The **student studio** and a first
+**lecturer dashboard** (`/[locale]/lecturer`: courses, assignments, roster,
+interview reports with integrity signals) are built; admin has no UI.
 
 **Live:** https://podtask.vercel.app  ·  GitHub: eliavbenhamo1409-sys/podtask  ·
 Supabase project `podtask` (ref `jxlrpewoqikpswxmtdma`, region ap-northeast-1).
@@ -26,13 +27,15 @@ interview room, data layer, known issues). Edge functions: `supabase/functions/R
   interview_messages, answer_evaluations, reports, …), RLS, Storage, Auth
   (email+password, magic link, guest via `create-guest-session`).
 - Supabase Edge Functions (Deno) in `supabase/functions/`:
-  `prepare-submission` (parse → analyze → plan → interview row),
+  `prepare-submission` (parse → analyze → question pool + seeded plan → interview row),
+  `interview-control` (consent / start-resume / telemetry / host flags, service role),
   `create-realtime-session` (mints an OpenAI Realtime session, `gpt-realtime`,
   transcription `gpt-4o-transcribe`, system prompt from
   `_shared/realtime-instructions.ts`), `save-interview-message`,
-  `complete-interview`, `generate-report`, `create-guest-session`
-  (service-role, unauthenticated by design). `evaluate-answer` and
-  `_shared/providers.ts` are dormant mock code.
+  `complete-interview` (idempotent + server-side integrity analysis),
+  `generate-report`, `evaluate-answer` (per-question knowledge evaluation),
+  `create-guest-session` (service-role, unauthenticated by design, rate
+  limited). `_shared/providers.ts` is dormant mock code.
 - OpenAI via `_shared/openai.ts`: gpt-4.1-mini for parse/analyze/plan, gpt-4.1
   for scoring. Two secrets: `openai_realtime` (create-realtime-session) and
   `openai_realtime2` (everything else).
@@ -43,10 +46,14 @@ interview room, data layer, known issues). Edge functions: `supabase/functions/R
 
 ## Student flow (routes under `/[locale]/student`)
 dashboard → assignment details → upload → `submissions/:id/processing`
-(invokes `prepare-submission`, subscribes/polls) → lobby → mic-test →
-`interviews/:id` (WebRTC to OpenAI Realtime, 5 planned questions, host announces
-the ordinal, calls `finish_interview` only after saying goodbye) →
-`interviews/:id/complete` (score card, rubric, transcript). Also
+(invokes `prepare-submission`, subscribes/polls) → lobby → consent (integrity
+notice, recorded server-side) → mic-test (mic + camera check) →
+`interviews/:id` (page calls `interview-control` start; WebRTC to OpenAI
+Realtime, 5 planned questions chosen server-side from a pool of 12, host
+announces the ordinal, calls `finish_interview` only after saying goodbye;
+camera self-view, activity telemetry, gentle silence nudges, own-words prompt,
+`flag_answer`) → `interviews/:id/complete` (score card, rubric, transcript).
+Integrity design and trust model: `ARCHITECTURE.md` §8. Also
 `student/self/new` for self-initiated assignments (personal course per
 institution), history, profile, help.
 

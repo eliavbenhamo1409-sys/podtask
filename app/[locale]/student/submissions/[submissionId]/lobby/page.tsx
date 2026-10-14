@@ -55,6 +55,12 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
             t("lobby.topic4"),
           ];
   const estMinutes = lobby.assignment.estimatedInterviewMinutes;
+  // The integrity notice comes before the mic / camera check when the
+  // assignment asks for it (the default); demo assignments show it too.
+  const requireConsent = lobby.assignment.integrity?.requireConsent ?? true;
+  const nextHref = requireConsent
+    ? `/student/submissions/${submissionId}/consent`
+    : `/student/submissions/${submissionId}/mic-test`;
 
   return (
     <StudentAppShell blobsVariant="studio">
@@ -182,7 +188,7 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
             ) : null}
 
             <div style={{ marginTop: 32 }}>
-              <Link href={`/student/submissions/${submissionId}/mic-test`} className="btn btn-primary btn-lg" style={{ width: "100%" }}>
+              <Link href={nextHref} className="btn btn-primary btn-lg" style={{ width: "100%" }}>
                   <MicIcon size={18} /> {t("lobby.testMicAndStart")}
                 </Link>
               <div

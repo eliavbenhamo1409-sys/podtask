@@ -4,7 +4,10 @@ import type { Database } from "./database.types";
 import { defaultLocale, locales } from "../i18n/config";
 import { MOCK_MODE } from "../env";
 
-const PROTECTED_PATTERNS = [/^\/(he|en)\/student(\/|$)/];
+// Signed-in only. The lecturer area additionally checks the profile role in
+// its layout (and every query is bound by RLS); the middleware only decides
+// "signed in or not" from the local JWT.
+const PROTECTED_PATTERNS = [/^\/(he|en)\/student(\/|$)/, /^\/(he|en)\/lecturer(\/|$)/];
 
 function isProtectedPath(pathname: string) {
   return PROTECTED_PATTERNS.some((re) => re.test(pathname));
