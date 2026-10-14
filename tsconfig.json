@@ -38,6 +38,6 @@
   "exclude": [
     "node_modules",
     "podtask 2",
-    "supabase/functions"
+    "supabase/functions", "tests", "bench", "load"
   ]
 }

@@ -2,9 +2,13 @@
 //
 // Closes an interview: marks it completed (idempotent: a second call never
 // regresses the submission or rewrites the timestamps), runs the server-side
-// integrity analysis (`_shared/integrity.ts`), then triggers the scoring
-// report and the per-question evaluation server-to-server, forwarding the
-// student's Authorization header so both validate ownership as usual.
+// integrity analysis (`_shared/integrity.ts`), then hands grading to the
+// durable queue. The `completed` status update fires the DB outbox trigger
+// (`enqueue_grading_on_complete`) in the same transaction, so a completed
+// interview can never fail to be queued; this function only KICKS the
+// `grading-worker` so the student does not wait for the next pg_cron tick.
+// `GRADING_LEGACY_SYNC=1` restores the previous synchronous path
+// (generate-report + evaluate-answer over HTTP) as a rollback switch.
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient, userClient } from "../_shared/supabase.ts";
 import {
@@ -18,6 +22,7 @@ import {
   isPersonalCourseCode,
   resolveIntegritySettings,
 } from "../_shared/integrity-settings.ts";
+import { kickGradingWorker } from "../_shared/grading/kick.ts";
 
 declare const Deno: {
   serve: (h: (req: Request) => Response | Promise<Response>) => void;
@@ -117,16 +122,28 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ---- Scoring + per-question evaluation, in parallel -----------------
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const [reportTriggered, evaluationTriggered] = await Promise.all([
-    invokeSibling(sb, "generate-report", interviewId, authHeader, auth.userId),
-    settings.perAnswerEvaluation
-      ? invokeSibling(sb, "evaluate-answer", interviewId, authHeader, auth.userId)
-      : Promise.resolve(false),
-  ]);
+  // ---- Release the live-session capacity slot (best effort) ------------
+  try {
+    await sb.rpc("release_ai_slot", { p_pool: "realtime", p_holder: `interview:${interviewId}` });
+  } catch {
+    // the lease expires on its own
+  }
 
-  return jsonResponse({ ok: true, reportTriggered, evaluationTriggered });
+  // ---- Grading ---------------------------------------------------------
+  if (Deno.env.get("GRADING_LEGACY_SYNC") === "1") {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const [reportTriggered, evaluationTriggered] = await Promise.all([
+      invokeSibling(sb, "generate-report", interviewId, authHeader, auth.userId),
+      settings.perAnswerEvaluation
+        ? invokeSibling(sb, "evaluate-answer", interviewId, authHeader, auth.userId)
+        : Promise.resolve(false),
+    ]);
+    return jsonResponse({ ok: true, reportTriggered, evaluationTriggered, legacy: true });
+  }
+
+  // The job was queued by the outbox trigger; kick the worker now.
+  const kicked = await kickGradingWorker(interviewId);
+  return jsonResponse({ ok: true, reportTriggered: false, gradingQueued: true, kicked });
 });
 
 type Sb = ReturnType<typeof serviceClient>;

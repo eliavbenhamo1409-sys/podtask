@@ -26,6 +26,7 @@ import {
   getInterviewTranscript,
   getReportForInterview,
 } from "@/lib/student/student-service";
+import { getGradingStatus } from "@/lib/student/grading-status";
 import { isHostDirective } from "@/lib/realtime/host-directives";
 import type { InterviewTranscript } from "@/lib/student/types";
 
@@ -39,7 +40,13 @@ interface ScoreCardProps {
 }
 
 const POLL_INTERVAL_MS = 1500;
+// After this long the "taking longer than usual" note appears...
 const MAX_POLL_MS = 180_000;
+// ...but polling continues while the grading queue still reports the job as
+// queued / running / retrying (a burst of completions is graded in turn), up
+// to this budget. A job the queue gave up on (`dead`) shows the note at once.
+const MAX_POLL_ACTIVE_MS = 12 * 60_000;
+const STATUS_EVERY_TICKS = 4;
 
 // The scoring call is a single opaque request (~30-60 s), so the progress
 // shown while waiting is time-based: it walks through the real stages of
@@ -178,20 +185,42 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
     if (report && report.status === "ready") return;
     let cancelled = false;
     const start = Date.now();
+    let ticks = 0;
+    let jobActive = true;
+    let slowShown = false;
     const tick = async () => {
       while (!cancelled) {
+        ticks += 1;
         try {
           const next = await getReportForInterview(interviewId);
           if (cancelled) return;
-          if (next) setReport(next);
-          if (next && next.status === "ready") return;
+          if (next && next.status === "ready") {
+            setReport(next);
+            return;
+          }
         } catch {
           // Swallow transient errors; we'll retry on the next tick.
         }
-        if (Date.now() - start > MAX_POLL_MS) {
-          if (!cancelled) setTimedOut(true);
-          return;
+        if (ticks % STATUS_EVERY_TICKS === 1) {
+          try {
+            const status = await getGradingStatus(interviewId);
+            if (cancelled) return;
+            const job = status?.job?.status ?? null;
+            if (job === "dead") {
+              setTimedOut(true);
+              return;
+            }
+            jobActive = job === null || job === "queued" || job === "running" || job === "failed";
+          } catch {
+            // Status is best effort; the report poll above is the source of truth.
+          }
         }
+        const elapsed = Date.now() - start;
+        if (elapsed > MAX_POLL_MS && !slowShown) {
+          slowShown = true;
+          setTimedOut(true);
+        }
+        if (elapsed > (jobActive ? MAX_POLL_ACTIVE_MS : MAX_POLL_MS)) return;
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
     };

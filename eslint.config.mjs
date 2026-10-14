@@ -7,7 +7,7 @@ const eslintConfig = [
       "podtask 2/**",
       ".next/**",
       "node_modules/**",
-      "supabase/functions/**",
+      "supabase/functions/**", "tests/**", "bench/**", "load/**",
     ],
   },
 ];

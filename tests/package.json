@@ -1,0 +1,15 @@
+{
+  "name": "podtask-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unit + SQL tests for the grading engine and the grading queue. Isolated from the Next.js app: run `npm install` here once, then `npm test`.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 'grading/**/*.test.ts' 'sql/**/*.test.ts'",
+    "test:grading": "node --test 'grading/**/*.test.ts'",
+    "test:sql": "node --test --test-concurrency=1 'sql/**/*.test.ts'"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.9"
+  }
+}

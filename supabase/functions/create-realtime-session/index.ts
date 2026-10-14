@@ -190,6 +190,32 @@ Deno.serve(async (req) => {
     personal: isPersonalCourseCode(course?.code),
   });
 
+  // Admission control: one `realtime` capacity slot per interview, held for
+  // the whole session (renewed on reconnects, released by complete-interview,
+  // expires on its own). When the pool is full the room gets an explicit
+  // `at_capacity` instead of a secret that would fail mid-conversation.
+  // `ai_capacity.realtime.max_concurrent` must reflect the verified OpenAI tier.
+  const slotTtl = (Number(assignment?.interview_duration_minutes) || 12) * 60 + 15 * 60;
+  const { data: admission } = await sb.rpc("acquire_ai_slot", {
+    p_pool: "realtime",
+    p_holder: `interview:${interview.id}`,
+    p_ttl_seconds: slotTtl,
+  });
+  if (admission && admission.ok === false) {
+    const retryAfterSeconds = Math.max(5, Number(admission.retry_after_seconds) || 30);
+    await sb.from("system_events").insert({
+      event_type: "realtime.admission_refused",
+      actor_id: auth.userId,
+      entity_type: "interview",
+      entity_id: interview.id,
+      payload: { severity: "warn", in_flight: admission.in_flight ?? null, max: admission.max ?? null, retry_after_seconds: retryAfterSeconds },
+    });
+    return jsonResponse(
+      { ok: false, error: "at_capacity", retryAfterSeconds, inFlight: admission.in_flight ?? null, max: admission.max ?? null },
+      503,
+    );
+  }
+
   // Pull the planned questions out of the plan blob. The host receives
   // the full list as part of its system prompt — it owns pacing and
   // moves between questions on its own (no per-question injection).

@@ -6,14 +6,14 @@ engineer or agent needs before touching the pipeline.
 ## 1. The pipeline
 
 ```
-upload (browser)            prepare-submission (edge)                 interview room (browser)                 after the interview (edge)
+upload (browser)            prepare-submission (edge)                 interview room (browser)                 after the interview (edge + queue)
 ──────────────────────      ────────────────────────────────────      ─────────────────────────────────────    ─────────────────────────────
 student picks a file   →    submissions.status:                  →    create-realtime-session mints an    →    complete-interview marks the
-submissions row created     uploaded → parsing → parsed →             OpenAI Realtime client secret;           interview completed and scores
-file → Storage bucket       analyzing → analysis_ready →              browser opens WebRTC directly to         it (gpt-4.1) → reports row
-                            interview_ready                           OpenAI; host speaks first.               (status report_ready).
-                            + document_parses, document_analyses,     Every host/student utterance is          generate-report builds the
-                            interviews (status ready),                saved via save-interview-message.        student-facing rubric/report.
+submissions row created     uploaded → parsing → parsed →             OpenAI Realtime client secret;           interview completed; a DB trigger
+file → Storage bucket       analyzing → analysis_ready →              browser opens WebRTC directly to         queues a grading job (outbox);
+                            interview_ready                           OpenAI; host speaks first.               grading-worker grades it with the
+                            + document_parses, document_analyses,     Every host/student utterance is          versioned engine (§9) → reports
+                            interviews (status ready),                saved via save-interview-message.        row (status ready, report_ready).
                             interview_plans (5 questions)
 ```
 
@@ -169,8 +169,9 @@ rendering. Rules that keep pages fast:
    keyframe that doesn't exist.
 9. **Uncommitted rewrite of `supabase/migrations/20260506000003_anonymous_auth_support.sql`**
    in the working tree contradicts the version already applied in production.
-10. `evaluate-answer` and `_shared/providers.ts` are dormant mock code that is
-    still deployed; `podtask 2/` is the static design prototype.
+10. `_shared/providers.ts` is dormant mock code; `podtask 2/` is the static
+    design prototype. (`evaluate-answer` / `generate-report` are thin
+    re-queue wrappers since §9.)
 
 ## 8. Integrity system and lecturer dashboard (2026-10-14)
 
@@ -235,3 +236,73 @@ report (score + rubric, per-question answers with the knowledge evaluation,
 integrity signals with limitations, browser/camera events, transcript, review
 panel → `interview_reviews`). Data layer: `lib/lecturer/*`; all reads run
 under the lecturer's session and the lecturer RLS policies.
+
+## 9. Grading engine v2 and the grading queue (2026-10-14)
+
+Code: `supabase/functions/_shared/grading/*` (runtime-neutral: Deno in the
+edge functions, Node in `tests/`, `bench/`, `load/`), `grading-worker`,
+migrations `20260515000001_grading_engine.sql` + `20260515000002_grading_cron.sql`.
+
+### One source of truth for the score
+
+| step | where | what |
+| --- | --- | --- |
+| material | `transcript.ts` | per planned question: student turns (directives / echoes / discarded turns removed), host turns (first = question, rest = follow-ups), `skipped_question:N` / `replaced_question:N` markers (by `plan_question_id`, else ordinal), technical signals (disconnects, resumes, mint failures). |
+| context | `context.ts` | the two document chunks that overlap the question's anchor / key points most (lexical, deterministic). The document checks claims; it never stands in for the spoken answer. |
+| evaluation | `prompt.ts` + `provider.ts` | ONE strict-JSON call per answered question: `answer_status` (correct / partially_correct / vague / incorrect / missing / unassessable), six criterion scores 0-5 against the anchors in `rubric.ts`, correct facts, errors, missing points, verbatim evidence quotes, rationale, confidence, uncertainty reasons. |
+| evidence check | `evidence.ts` | every quote must be found as one contiguous token run (≥ 80 %) in the student's own turns for that question (same normaliser as the overlap check); otherwise it is kept but `verified: false`. |
+| score | `score.ts` (pure) | question score = weighted mean of the criteria APPLICABLE to the question's kind (`KIND_WEIGHTS`; e.g. no `application` for a concept question) → 0-100. Overall = mean of question scores (skipped = 0, counted once; replaced = normal; unanswered = 0, or excluded + human review when the interview shows technical trouble; `unassessable` = excluded). Four display dimensions from a one-to-one criterion map (conceptual ← accuracy, relevance; reasoning ← application, consistency; evidence ← process; communication ← explanation). Levels 0-49/50-69/70-84/85-100 unchanged. |
+| second pass | `pipeline.ts` | independent re-evaluation (no exposure to pass 1) when: evidence unverified with credit ≥ 40, low confidence, status/score contradictions, the question could flip the overall level (±10), or a 10 % QA sample. ≤ 20 points apart → averaged; otherwise pass 1 is kept as provisional and the report is `requires_human_review`. No tiebreak judge until the benchmark shows it helps. |
+| narrative | `prompt.ts` | one call that explains the computed numbers and may not change them; deterministic fallback text (he/en/ar) when nothing was assessable or the call fails. |
+| persistence | `persist_grading_result` | one transaction: `grading_runs` → succeeded, `answer_evaluations` replaced (legacy columns + provenance), `reports` upserted on `submission_id`, `submissions.status = report_ready`, job done, `report.generated` event. |
+
+Reproducibility: every run stores rubric / prompt / scoring versions, models,
+params, provider, the canonical SHA-256 `input_hash`, the evaluations, the
+computed result, usage and timings. The same input with the same versions
+reuses the stored run with no model call; a forced re-grade is a new
+`run_no`, never an overwrite. `reports.rubric_result` keeps its four keys +
+`overall_score` + `skipped_questions` + `replaced_questions` and gains a
+provenance block (`engine: v2`, versions, `grading_run_id`,
+`requires_human_review`, `review_reasons`, `confidence`, `coverage`,
+`question_scores`).
+
+### Durable queue
+
+- `interviews.status → completed` fires `enqueue_grading_on_complete`, which
+  inserts the `grading_jobs` row in the same transaction (outbox). Unique per
+  interview. `grading_config.queue_enabled` is the switch;
+  `reconcile_since` keeps old interviews out.
+- `complete-interview` only KICKS `grading-worker` (service role, `waitUntil`
+  when available). `GRADING_LEGACY_SYNC=1` restores the old synchronous path.
+- `claim_grading_jobs` = `FOR UPDATE SKIP LOCKED` + lease; a worker extends
+  its lease every 45 s; an expired lease is reclaimed; `fail_grading_job`
+  applies 15 s·2ⁿ backoff with jitter (or the provider's Retry-After), dead
+  letter at `max_attempts`; `reconcile_grading` (cron, 5 min) queues
+  completed interviews without a job, re-queues done jobs whose report is
+  missing, expires leases and capacity slots.
+- pg_cron ticks `private.grading_tick` every 10 s; it POSTs to the worker
+  (service key from Vault) only when there is something to claim, fanning out
+  up to 8 invocations by backlog.
+- Interrupted runs resume from their checkpointed evaluations; a run that
+  lost its lease to a newer run is `superseded` and cannot publish.
+- `grading_status(interview_id)` (owner / lecturer) exposes job status,
+  stage, attempts and a sanitised error code; the report page polls it.
+
+### Global concurrency gate
+
+`ai_capacity` pools (`realtime`, `prepare`, `evaluate`, `verify`,
+`narrative`) with `acquire_ai_slot` / `release_ai_slot` leases in Postgres
+(row lock per pool, TTL expiry). Background pools wait with backoff instead
+of bursting into 429s; `create-realtime-session` acquires one `realtime`
+slot per interview for the whole session and answers `503 at_capacity` +
+`retryAfterSeconds` when the pool is full. **`realtime.max_concurrent`
+defaults to 12 (the measured OpenAI Build tier) and must be raised by hand
+after the org tier is verified.**
+
+### Verification status
+
+Verified locally: 29 engine tests + 10 SQL tests (`cd tests && npm test`,
+pglite applies the real migration), mock benchmark, mock load runs
+(`bench/README.md`, `load/README.md`). Not verified: production deploy,
+real-model accuracy (needs `OPENAI_API_KEY`), the org's real rate limits
+(`bench/grading/run.ts --probe`), live voice at scale (OpenAI tier).

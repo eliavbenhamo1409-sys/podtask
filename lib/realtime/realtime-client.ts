@@ -43,7 +43,21 @@ export async function createRealtimeSession(
   });
 
   if (error) {
-    throw new Error(`realtime_session_invoke_failed: ${error.message}`);
+    // A non-2xx reply carries a JSON body with the server's error code
+    // (`at_capacity`, `too_many_sessions`, `interview_not_started`, ...).
+    // Surface that code so the room can tell admission refusals apart from
+    // transport failures.
+    const ctx = (error as { context?: Response }).context;
+    let code: string | null = null;
+    if (ctx && typeof ctx.clone === "function") {
+      try {
+        const body = (await ctx.clone().json()) as { error?: unknown } | null;
+        if (body && typeof body.error === "string" && body.error) code = body.error;
+      } catch {
+        // not JSON
+      }
+    }
+    throw new Error(code ?? `realtime_session_invoke_failed: ${error.message}`);
   }
   if (!data || !("ok" in data) || !data.ok) {
     const msg =

@@ -1,0 +1,16 @@
+{
+  "scenario": "a",
+  "target": "mock",
+  "users": 200,
+  "realtimePool": 12,
+  "admitted": 24,
+  "refused": 176,
+  "admissionRate": 0.12,
+  "transcriptWrites": 864,
+  "writeLatencyMs": {
+    "p50": 123,
+    "p95": 175
+  },
+  "elapsedSeconds": 35,
+  "note": "Admission is the realtime pool: with the default 12 (current OpenAI Build tier) most of a 200-user burst is refused with an explicit at_capacity; raise ai_capacity.realtime after upgrading the tier."
+}

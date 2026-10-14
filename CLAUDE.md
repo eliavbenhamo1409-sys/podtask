@@ -33,9 +33,11 @@ interview room, data layer, known issues). Edge functions: `supabase/functions/R
   transcription `gpt-4o-transcribe`, system prompt from
   `_shared/realtime-instructions.ts`), `save-interview-message`,
   `complete-interview` (idempotent + server-side integrity analysis),
-  `generate-report`, `evaluate-answer` (per-question knowledge evaluation),
-  `create-guest-session` (service-role, unauthenticated by design, rate
-  limited). `_shared/providers.ts` is dormant mock code.
+  `grading-worker` (the grading engine v2: `_shared/grading/*`, durable
+  `grading_jobs` queue, versioned `grading_runs`, capacity gate; see
+  `ARCHITECTURE.md` §9), `generate-report` / `evaluate-answer` (thin
+  re-queue wrappers), `create-guest-session` (service-role, unauthenticated
+  by design, rate limited). `_shared/providers.ts` is dormant mock code.
 - OpenAI via `_shared/openai.ts`: gpt-4.1-mini for parse/analyze/plan, gpt-4.1
   for scoring. Two secrets: `openai_realtime` (create-realtime-session) and
   `openai_realtime2` (everything else).
@@ -58,8 +60,11 @@ Integrity design and trust model: `ARCHITECTURE.md` §8. Also
 institution), history, profile, help.
 
 ## Working rules
-- Gates: `npm run check` (tsc + eslint) and `npm run build`. There are no tests;
-  do not land behaviour changes in the interview room without a live run.
+- Gates: `npm run check` (tsc + eslint) and `npm run build`. The grading
+  engine and its migration have tests: `cd tests && npm install && npm test`
+  (node --test + pglite). `bench/` (grading accuracy / model comparison) and
+  `load/` (queue + concurrency) run on mocks by default. Do not land
+  behaviour changes in the interview room without a live run.
 - Keep `lib/realtime/host-text-heuristics.ts` and `lib/realtime/host-directives.ts`
   in sync with the prompt in `supabase/functions/_shared/realtime-instructions.ts`
   (ordinals, farewells, system-note kinds) for all three interview languages.

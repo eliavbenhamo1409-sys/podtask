@@ -1,0 +1,239 @@
+{
+  "scenario": "b",
+  "target": "mock",
+  "users": 200,
+  "workers": 8,
+  "batch": 2,
+  "pools": {
+    "realtime": 12,
+    "evaluate": 10,
+    "verify": 4,
+    "narrative": 6
+  },
+  "mockEvalMs": 900,
+  "reports": 200,
+  "failures": 0,
+  "deadJobs": 0,
+  "modelCalls": 1214,
+  "slotRefusals": 883,
+  "peakInFlight": {
+    "evaluate": 10,
+    "narrative": 6,
+    "verify": 2
+  },
+  "drainSeconds": 131,
+  "completionToReportMs": {
+    "p50": 55685,
+    "p95": 97630,
+    "p99": 101172,
+    "max": 102866
+  },
+  "throughputPerMin": 91.3,
+  "backlogSamples": [
+    {
+      "t": 0,
+      "backlog": 1,
+      "evaluate": 0
+    },
+    {
+      "t": 3280,
+      "backlog": 18,
+      "evaluate": 10
+    },
+    {
+      "t": 6550,
+      "backlog": 34,
+      "evaluate": 5
+    },
+    {
+      "t": 9823,
+      "backlog": 53,
+      "evaluate": 8
+    },
+    {
+      "t": 13093,
+      "backlog": 73,
+      "evaluate": 10
+    },
+    {
+      "t": 16365,
+      "backlog": 91,
+      "evaluate": 9
+    },
+    {
+      "t": 19643,
+      "backlog": 108,
+      "evaluate": 2
+    },
+    {
+      "t": 22916,
+      "backlog": 123,
+      "evaluate": 10
+    },
+    {
+      "t": 26193,
+      "backlog": 135,
+      "evaluate": 4
+    },
+    {
+      "t": 29466,
+      "backlog": 154,
+      "evaluate": 9
+    },
+    {
+      "t": 32738,
+      "backlog": 153,
+      "evaluate": 7
+    },
+    {
+      "t": 36017,
+      "backlog": 150,
+      "evaluate": 9
+    },
+    {
+      "t": 39290,
+      "backlog": 147,
+      "evaluate": 3
+    },
+    {
+      "t": 42566,
+      "backlog": 140,
+      "evaluate": 2
+    },
+    {
+      "t": 45838,
+      "backlog": 136,
+      "evaluate": 10
+    },
+    {
+      "t": 49110,
+      "backlog": 130,
+      "evaluate": 1
+    },
+    {
+      "t": 52383,
+      "backlog": 125,
+      "evaluate": 7
+    },
+    {
+      "t": 55656,
+      "backlog": 122,
+      "evaluate": 5
+    },
+    {
+      "t": 58928,
+      "backlog": 116,
+      "evaluate": 3
+    },
+    {
+      "t": 62203,
+      "backlog": 111,
+      "evaluate": 9
+    },
+    {
+      "t": 65473,
+      "backlog": 108,
+      "evaluate": 7
+    },
+    {
+      "t": 68745,
+      "backlog": 101,
+      "evaluate": 2
+    },
+    {
+      "t": 72015,
+      "backlog": 96,
+      "evaluate": 7
+    },
+    {
+      "t": 75287,
+      "backlog": 90,
+      "evaluate": 10
+    },
+    {
+      "t": 78554,
+      "backlog": 84,
+      "evaluate": 6
+    },
+    {
+      "t": 81828,
+      "backlog": 79,
+      "evaluate": 3
+    },
+    {
+      "t": 85102,
+      "backlog": 77,
+      "evaluate": 4
+    },
+    {
+      "t": 88377,
+      "backlog": 70,
+      "evaluate": 4
+    },
+    {
+      "t": 91648,
+      "backlog": 64,
+      "evaluate": 5
+    },
+    {
+      "t": 94922,
+      "backlog": 60,
+      "evaluate": 7
+    },
+    {
+      "t": 98198,
+      "backlog": 58,
+      "evaluate": 3
+    },
+    {
+      "t": 101470,
+      "backlog": 51,
+      "evaluate": 10
+    },
+    {
+      "t": 104747,
+      "backlog": 44,
+      "evaluate": 10
+    },
+    {
+      "t": 108023,
+      "backlog": 39,
+      "evaluate": 6
+    },
+    {
+      "t": 111293,
+      "backlog": 34,
+      "evaluate": 7
+    },
+    {
+      "t": 114565,
+      "backlog": 29,
+      "evaluate": 7
+    },
+    {
+      "t": 117842,
+      "backlog": 24,
+      "evaluate": 9
+    },
+    {
+      "t": 121114,
+      "backlog": 18,
+      "evaluate": 10
+    },
+    {
+      "t": 124394,
+      "backlog": 15,
+      "evaluate": 3
+    },
+    {
+      "t": 127657,
+      "backlog": 4,
+      "evaluate": 5
+    },
+    {
+      "t": 130932,
+      "backlog": 1,
+      "evaluate": 0
+    }
+  ]
+}
