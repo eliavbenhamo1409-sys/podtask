@@ -182,7 +182,10 @@
     "tip3Body": "זו שיחה, לא דקלום. סמכי על הטיוטה שלך.",
     "stuckTitle": "תקועה בשאלה?",
     "stuckBody": "תגידי \"אני לא בטוחה\" ואריה תנסח מחדש או תעבור הלאה. בלי קנס.",
-    "estTimeMinutes": "~{minutes} דק׳"
+    "estTimeMinutes": "~{minutes} דק׳",
+    "languageTitle": "שפת הראיון",
+    "languageHint": "המנחה תדבר, תקשיב ותתמלל בשפה הזו בלבד. אפשר לשנות עד תחילת הראיון.",
+    "languageSaveFailed": "לא הצלחנו לשמור את הבחירה. נסי שוב."
   },
   "micTest": {
     "back": "חזרה לחדר ההמתנה",
@@ -320,7 +323,8 @@
     "recsMeta": "{count, plural, one {המלצה אחת} other {# המלצות}}",
     "transcriptMeta": "{questions, plural, one {שאלה אחת} other {# שאלות}} · {messages, plural, one {הודעה אחת} other {# הודעות}}",
     "transcriptSkipped": "דילגת על השאלה הזו",
-    "transcriptReplaced": "ביקשת שאלה אחרת, אז השאלה הוחלפה"
+    "transcriptReplaced": "ביקשת שאלה אחרת, אז השאלה הוחלפה",
+    "transcriptDiscarded": "קטע שלא הובן (רעש או שפה אחרת) לא נכלל בהערכה"
   },
   "history": {
     "title": "היסטוריית מטלות",

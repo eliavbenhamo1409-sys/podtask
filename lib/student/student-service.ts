@@ -38,6 +38,7 @@ import type {
   StudentProfile,
   StudentSubmission,
 } from "./types";
+import type { InterviewLanguage } from "./interview-language";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { MOCK_MODE } from "@/lib/env";
@@ -405,6 +406,7 @@ export async function prepareSubmission(
       assignmentId: submission.assignmentId,
       status: "ready",
       currentState: "idle",
+      language: "he",
       topics: findMockAssignment(submission.assignmentId)?.topics ?? [],
       questions: MOCK_INTERVIEW_QUESTIONS as StudentInterviewQuestion[],
     };
@@ -528,6 +530,25 @@ export async function startInterview(
     interview.questions = MOCK_INTERVIEW_QUESTIONS as StudentInterviewQuestion[];
   }
   return interview;
+}
+
+/**
+ * Saves the interview language the student picked in the lobby. Real rows go
+ * through Supabase (owner RLS); demo ids update the in-memory fixture.
+ */
+export async function setInterviewLanguage(
+  interviewId: string,
+  language: InterviewLanguage,
+): Promise<boolean> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { setInterviewLanguageSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    return await setInterviewLanguageSb(sb, interviewId, language);
+  }
+  const interview = findMockInterview(interviewId);
+  if (!interview) return false;
+  interview.language = language;
+  return true;
 }
 
 export async function completeInterview(

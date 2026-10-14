@@ -10,6 +10,10 @@ import {
   uploadToBucket,
 } from "@/lib/supabase/storage";
 import type { Database } from "@/lib/supabase/database.types";
+import {
+  normalizeInterviewLanguage,
+  type InterviewLanguage,
+} from "./interview-language";
 import type {
   InterviewTranscript,
   StudentAssignment,
@@ -433,6 +437,7 @@ export async function getInterviewSb(
     assignment_id: string;
     status: StudentInterview["status"];
     current_state: StudentInterview["currentState"];
+    language: string | null;
     started_at: string | null;
     completed_at: string | null;
     duration_seconds: number | null;
@@ -464,6 +469,7 @@ export async function getInterviewSb(
     assignmentId: row.assignment_id,
     status: row.status,
     currentState: row.current_state,
+    language: normalizeInterviewLanguage(row.language),
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     durationSeconds: row.duration_seconds ?? undefined,
@@ -521,6 +527,7 @@ export async function getSubmissionLobbySb(
       assignmentId: submission.assignmentId,
       status: "ready",
       currentState: "idle",
+      language: "he",
       topics: [],
       questions: [],
     };
@@ -707,6 +714,26 @@ export async function getInterviewTranscriptSb(
     })) ?? [];
 
   return { messages: filtered, plan };
+}
+
+/**
+ * Stores the language the student picked in the lobby. Only interviews that
+ * have not started yet accept it (a running session was minted with the old
+ * language and would not follow). Returns false when nothing was updated.
+ */
+export async function setInterviewLanguageSb(
+  sb: SbClient,
+  interviewId: string,
+  language: InterviewLanguage,
+): Promise<boolean> {
+  const { data, error } = await sb
+    .from("interviews")
+    .update({ language })
+    .eq("id", interviewId)
+    .in("status", ["created", "ready"])
+    .select("id");
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function startInterviewSb(

@@ -44,6 +44,12 @@ export interface OpenAIRealtimeCallbacks {
   onUserTranscriptDelta?: (text: string) => void;
   /** Final committed user transcript (per item). */
   onUserTranscriptDone?: (text: string) => void;
+  /**
+   * Server VAD opened a turn but the transcription model found no words in
+   * it (breath, a cough, room noise). The model still heard the audio and
+   * may be replying to it; the room uses this to steer it off that reply.
+   */
+  onUserTranscriptEmpty?: () => void;
   /** Final committed assistant transcript (per item). */
   onAssistantTranscriptDone?: (text: string, responseId?: string) => void;
   /**
@@ -542,8 +548,9 @@ export class OpenAIRealtimeAdapter {
       }
       case "conversation.item.input_audio_transcription.completed": {
         const text =
-          typeof event.transcript === "string" ? event.transcript : "";
+          typeof event.transcript === "string" ? event.transcript.trim() : "";
         if (text) this.callbacks.onUserTranscriptDone?.(text);
+        else this.callbacks.onUserTranscriptEmpty?.();
         break;
       }
       case "response.output_item.added": {

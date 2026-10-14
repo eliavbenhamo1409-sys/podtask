@@ -379,8 +379,9 @@ function isSpace(code: number): boolean {
   return code === 32 || code === 10 || code === 13 || code === 9 || code === 0xa0;
 }
 
-/** Starting speaking-rate guess per UI language, characters per second. */
-export function defaultCharsPerSecond(locale: string): number {
-  // Hebrew is written without vowels, so fewer characters per spoken second.
-  return locale.startsWith("he") ? 12 : 15;
+/** Starting speaking-rate guess per interview language, characters per second. */
+export function defaultCharsPerSecond(language: string): number {
+  // Hebrew and Arabic are written without most vowels, so fewer characters
+  // per spoken second.
+  return language.startsWith("he") || language.startsWith("ar") ? 12 : 15;
 }

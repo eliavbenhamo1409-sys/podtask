@@ -56,7 +56,46 @@ sync when a migration changes an enum.
   persistence side effects (`saveInterviewMessage`, `completeInterview`).
 - `lib/realtime/host-text-heuristics.ts` infers question progress and closing
   from the host's words. **Its ordinal words and farewell phrases must match
-  the prompt in `supabase/functions/_shared/realtime-instructions.ts`.**
+  the prompt in `supabase/functions/_shared/realtime-instructions.ts`**, for
+  all three interview languages (he / en / ar).
+- `lib/realtime/student-text-guard.ts` judges every final student transcript
+  before the room counts it as an answer: a turn with no words in the
+  interview language's script (`off_language`, judged per word so Hebrew
+  sentences full of Latin tool names still pass; fewer than four words are
+  never judged) or a transcription artefact (`noise`: a "thank you for
+  watching"-style phrase that is the whole turn, looping words, a near-full
+  echo of the transcription prompt, an empty transcript) is recorded as a
+  `discarded_utterance:<kind>` system message, never counted, and the host is
+  told through a `[SYSTEM NOTE]` (`buildUnintelligibleDirective`) not to
+  build on it. The note is skipped while the student is already speaking the
+  real answer and once the farewell has started. The farewell the room requests is grounded the same way:
+  `buildFarewellInstructions` gets the assignment title and whether any
+  usable answer was captured, so a dead microphone ends with a neutral
+  goodbye instead of an invented recap.
+
+### Interview language
+
+The student picks the interview language in the lobby
+(`InterviewLanguagePicker` → `setInterviewLanguage` → `interviews.language`,
+owner RLS, only while the interview is `created` / `ready`). It is independent
+of the UI locale. `create-realtime-session` reads it first (the assignment
+language is only the fallback), builds the prompt for it, pins the input
+transcription to it (`audio.input.transcription.language` + a short
+vocabulary `prompt`), enables input noise reduction (`far_field` by default,
+`assignments.settings.noise_reduction` overrides) and returns it to the room,
+which uses it for every heuristic, directive, caption rate and text direction.
+The plan and analysis stay in the assignment language (he / en); for an
+Arabic interview the host is told to ask them in Arabic in its own words.
+`generate-report` writes the report in the interview language.
+
+Observed live (2026-10-14): with the transcription pinned, speech in another
+language comes back as a translation into the interview language (an English
+answer in a Hebrew interview was transcribed as Hebrew), so the transcript is
+single-language by construction and the `off_language` verdict mostly catches
+transcriber artefacts. The host is instructed to ask for the interview
+language when it hears another one, but that is best-effort: in the live run
+it simply answered the translated content in Hebrew. White noise at a
+realistic level did not open a turn at all (noise reduction + VAD threshold).
 
 Close paths (all end in `session.close()` → FSM `closing` → redirect to
 `/complete`): the `finish_interview` tool call (waits for the farewell audio),
@@ -120,7 +159,8 @@ rendering. Rules that keep pages fast:
    mirrors the host's ordinal announcements into the FSM and binds persisted
    messages to the detected plan question.
 5. **Student answers may be persisted twice** (both `conversation.item.done`
-   and `input_audio_transcription.completed` carry the text).
+   and `input_audio_transcription.completed` carry the text). The guard note
+   to the host is rate-limited (4 s) so a double event sends one note.
 6. **Real-mode dashboard cards all link to `/upload`**: the server pages resolve
    card routes through mock-data lookups that return `undefined` for UUIDs.
 7. **`create-guest-session` is unauthenticated** and creates real auth users

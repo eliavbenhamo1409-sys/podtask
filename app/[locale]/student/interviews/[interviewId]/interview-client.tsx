@@ -31,6 +31,13 @@
  * message, lowers the score) or swap one question once; both are sent to
  * the host as bracketed system notes inside a user text message.
  *
+ * LANGUAGE + GUARD. `interviewLanguage` (he / en / ar, chosen in the lobby)
+ * drives every heuristic, directive and caption setting; the UI `locale`
+ * only drives the chrome. Each final student transcript passes through
+ * `student-text-guard.ts`: noise / off-language turns are recorded as
+ * `discarded_utterance:<kind>` system lines, never counted as answers, and
+ * the host is told (system note) not to build on them.
+ *
  * PAUSE only pauses the on-screen timer; the live session keeps running.
  */
 
@@ -60,8 +67,16 @@ import {
   buildFarewellInstructions,
   buildReplaceDirective,
   buildSkipDirective,
+  buildUnintelligibleDirective,
+  isHostDirective,
   type FarewellReason,
+  type UnintelligibleKind,
 } from "@/lib/realtime/host-directives";
+import { assessStudentUtterance } from "@/lib/realtime/student-text-guard";
+import {
+  isRtlInterviewLanguage,
+  type InterviewLanguage,
+} from "@/lib/student/interview-language";
 import { useHeldTrue } from "@/lib/hooks/use-held-true";
 import { formatTime, isUuidLike } from "@/lib/utils";
 import {
@@ -106,6 +121,9 @@ const FAREWELL_NO_AUDIO_MS = 8000; // a requested goodbye never started
 const FAREWELL_SAFETY_MS = 25_000; // hard ceiling on any goodbye
 const FINAL_ANSWER_WATCHDOG_MS = 75_000; // last answer given, host never wrapped up
 const FINAL_ANSWER_WATCHDOG_SHORT_MS = 45_000; // after skipping the last question
+// A rejected student turn steers the host at most this often: both final
+// student events can carry the same turn, and one note is enough.
+const GUARD_NOTE_COOLDOWN_MS = 4000;
 
 interface TurnEntry {
   id: string;
@@ -117,7 +135,10 @@ interface InterviewRoomClientProps {
   interviewId: string;
   assignmentTitle: string;
   questions: StudentInterviewQuestion[];
+  /** UI locale (chrome, labels). */
   locale: string;
+  /** Language the host speaks and listens in; chosen in the lobby. */
+  interviewLanguage: InterviewLanguage;
   /** Shown on the student card; falls back to a generic label. */
   studentName?: string;
   studentInitial?: string;
@@ -158,6 +179,7 @@ export function InterviewRoomClient({
   assignmentTitle,
   questions: initialQuestions,
   locale,
+  interviewLanguage,
   studentName,
   studentInitial,
 }: InterviewRoomClientProps) {
@@ -198,6 +220,22 @@ export function InterviewRoomClient({
 
   const adapterRef = useRef<OpenAIRealtimeAdapter | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // The language the host actually speaks (he / en / ar). Starts from the
+  // interview row and is confirmed by the minted session; every heuristic,
+  // directive and caption setting reads it from here, never the UI locale.
+  const hostLangRef = useRef<InterviewLanguage>(interviewLanguage);
+  useEffect(() => {
+    hostLangRef.current = interviewLanguage;
+  }, [interviewLanguage]);
+  // Prompt the transcription model was given; an utterance that merely
+  // echoes it is noise (see student-text-guard.ts).
+  const transcriptionHintRef = useRef<string | null>(null);
+  const lastGuardNoteAtRef = useRef(0);
+  // True between server-VAD speech_started and speech_stopped. A guard note
+  // is pointless while the student is already giving the real answer: the
+  // host will respond to that turn anyway, and the note would only
+  // interrupt it.
+  const studentSpeakingRef = useRef(false);
 
   const [hostLevel, setHostLevel] = useState(0);
   const [userLevel, setUserLevel] = useState(0);
@@ -287,14 +325,15 @@ export function InterviewRoomClient({
 
   const getPacer = useCallback(() => {
     if (!pacerRef.current) {
+      const language = hostLangRef.current;
       pacerRef.current = new CaptionPacer({
         charsPerSecond:
-          loadCaptionRate(locale) ?? defaultCharsPerSecond(locale),
+          loadCaptionRate(language) ?? defaultCharsPerSecond(language),
         makeId: makeTurnId,
       });
     }
     return pacerRef.current;
-  }, [locale]);
+  }, []);
 
   // Push the pacer's view into React state, only when it actually changed.
   const syncCaptions = useCallback(() => {
@@ -332,11 +371,6 @@ export function InterviewRoomClient({
   );
 
   // ---- Section: closing (every path ends in closeNow) ----
-
-  const localeRef = useRef(locale);
-  useEffect(() => {
-    localeRef.current = locale;
-  }, [locale]);
 
   const clearClosingTimers = useCallback(() => {
     if (closingTimerRef.current !== null) {
@@ -387,7 +421,13 @@ export function InterviewRoomClient({
       const adapter = adapterRef.current;
       if (!adapter || farewellRef.current.sent) return;
       farewellRef.current.sent = true;
-      const instructions = buildFarewellInstructions(localeRef.current, reason);
+      // Grounded goodbye: the host may only recall what was really said, and
+      // when nothing usable was captured (dead mic) it says so instead of
+      // inventing a recap.
+      const instructions = buildFarewellInstructions(hostLangRef.current, reason, {
+        assignmentTitle,
+        studentSpoke: studentAnswerCountRef.current > 0,
+      });
       const startedAt = Date.now();
       const trySend = () => {
         if (finalAnswerHandledRef.current || adapterRef.current !== adapter) return;
@@ -396,9 +436,12 @@ export function InterviewRoomClient({
           return;
         }
         try {
+          // Speech only: left to "auto", the model sometimes answers the
+          // farewell request with a bare finish_interview call and the
+          // student hears nothing (observed live, 2026-10-14).
           adapter.sendEvent({
             type: "response.create",
-            response: { instructions },
+            response: { instructions, tool_choice: "none" },
           });
         } catch {
           closeNow();
@@ -417,7 +460,7 @@ export function InterviewRoomClient({
       };
       trySend();
     },
-    [closeNow],
+    [closeNow, assignmentTitle],
   );
 
   // Entry point for every "the interview is over" decision in live mode:
@@ -441,7 +484,7 @@ export function InterviewRoomClient({
       // Don't let the student's mic interrupt the goodbye (server VAD would
       // cancel the response and auto-create a new one).
       adapter.setMicEnabled(false);
-      const strength = closingStrength(lastAssistantTextRef.current, localeRef.current);
+      const strength = closingStrength(lastAssistantTextRef.current, hostLangRef.current);
       const hostAlreadySaidGoodbye =
         reason === "tool" && (strength === "likely" || strength === "strong");
       if (hostAlreadySaidGoodbye) {
@@ -480,16 +523,19 @@ export function InterviewRoomClient({
     [beginFarewell],
   );
 
-  // Inject text as if the student had typed it (skip / swap notes), once
-  // the server is idle. Cancels whatever the host is saying first so the
-  // reaction is immediate.
+  // Inject text as if the student had typed it (skip / swap / guard notes),
+  // once the server is idle. Cancels whatever the host is saying first so
+  // the reaction is immediate. A note still queued when the farewell starts
+  // is dropped, so it can never take the goodbye's response slot.
   const injectUserText = useCallback((text: string) => {
     const adapter = adapterRef.current;
     if (!adapter) return;
+    if (farewellRef.current.started || finalAnswerHandledRef.current) return;
     adapter.cancelActiveResponse();
     const startedAt = Date.now();
     const trySend = () => {
       if (adapterRef.current !== adapter) return;
+      if (farewellRef.current.started || finalAnswerHandledRef.current) return;
       if (adapter.isResponseActive() && Date.now() - startedAt < 3000) {
         window.setTimeout(trySend, 120);
         return;
@@ -552,6 +598,10 @@ export function InterviewRoomClient({
       try {
         const token = await createRealtimeSession(interviewId);
         if (cancelled) return;
+        // The session was minted for this language; follow it even if the
+        // page rendered with a stale row.
+        hostLangRef.current = token.language;
+        transcriptionHintRef.current = token.transcriptionHint;
 
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (cancelled) {
@@ -581,8 +631,42 @@ export function InterviewRoomClient({
           return i >= 0 ? (cappedQuestions[i]?.id ?? null) : null;
         };
 
+        // A turn the guard rejected (noise / another language): record it
+        // for the report, and tell the host not to build on it (it heard the
+        // audio natively and may already be replying to it).
+        const rejectStudentTurn = (kind: UnintelligibleKind) => {
+          sessionRef.current.persistSystemMessage(
+            `discarded_utterance:${kind}`,
+            currentPlanQuestionId(),
+          );
+          if (farewellRef.current.started || finalAnswerHandledRef.current) return;
+          // The student is already speaking the real answer (a cough or a
+          // false start was committed as its own turn): no note, the host
+          // answers the real turn.
+          if (studentSpeakingRef.current) return;
+          const now = Date.now();
+          if (now - lastGuardNoteAtRef.current < GUARD_NOTE_COOLDOWN_MS) return;
+          lastGuardNoteAtRef.current = now;
+          injectUserText(buildUnintelligibleDirective(hostLangRef.current, kind));
+        };
+
         const handleStudentUtterance = (text: string) => {
           if (!text) return;
+          // Our own skip / swap / guard notes come back as user items: keep
+          // them in the transcript (the report hides them), never judge or
+          // count them.
+          if (isHostDirective(text)) {
+            sessionRef.current.persistStudentMessage(text, currentPlanQuestionId());
+            return;
+          }
+          const verdict = assessStudentUtterance(text, {
+            language: hostLangRef.current,
+            transcriptionHint: transcriptionHintRef.current,
+          });
+          if (verdict !== "ok") {
+            rejectStudentTurn(verdict);
+            return;
+          }
           sessionRef.current.persistStudentMessage(text, currentPlanQuestionId());
           if (text.trim().length <= 2) return;
           studentAnswerCountRef.current += 1;
@@ -648,14 +732,16 @@ export function InterviewRoomClient({
             }
           },
           onUserSpeechStart: () => {
+            studentSpeakingRef.current = true;
             sessionRef.current.startRecording();
           },
           onUserSpeechStop: () => {
+            studentSpeakingRef.current = false;
             sessionRef.current.finishRecording(undefined, { persist: false });
           },
           onAssistantMessageDone: (text) => {
             if (!text) return;
-            const loc = localeRef.current;
+            const loc = hostLangRef.current;
             lastAssistantTextRef.current = text;
             // Defensive: if `response.audio_transcript.done` didn't fire
             // (older models / partial event coverage), the host text still
@@ -742,9 +828,11 @@ export function InterviewRoomClient({
             const pacer = getPacer();
             pacer.playbackStopped(performance.now(), responseId);
             syncCaptions();
-            saveCaptionRate(localeRef.current, pacer.charsPerSecond);
+            saveCaptionRate(hostLangRef.current, pacer.charsPerSecond);
           },
           onUserTranscriptDone: handleStudentUtterance,
+          // VAD opened a turn but no words came out of it: noise.
+          onUserTranscriptEmpty: () => rejectStudentTurn("noise"),
           onAssistantAudioLevel: (level) => {
             setHostLevel(level);
             // "Is the voice audible right now" for the caption clock.
@@ -844,6 +932,7 @@ export function InterviewRoomClient({
     closeAfterHostSilent,
     armFinalAnswerWatchdog,
     clearClosingTimers,
+    injectUserText,
     cappedQuestions,
   ]);
 
@@ -954,7 +1043,7 @@ export function InterviewRoomClient({
     );
     askedQuestionIndexesRef.current.add(idx);
     if (adapterMode === "openai") {
-      injectUserText(buildSkipDirective(locale, idx + 1, total, isLast));
+      injectUserText(buildSkipDirective(hostLangRef.current, idx + 1, total, isLast));
       if (isLast) {
         waitingForFinalAnswerRef.current = true;
         finalAnswerGivenRef.current = true;
@@ -984,7 +1073,7 @@ export function InterviewRoomClient({
       cappedQuestions[idx]?.id ?? null,
     );
     if (adapterMode === "openai") {
-      injectUserText(buildReplaceDirective(locale, idx + 1));
+      injectUserText(buildReplaceDirective(hostLangRef.current, idx + 1));
       return;
     }
     session.setQuestionIndex(idx);
@@ -1143,7 +1232,7 @@ export function InterviewRoomClient({
               <div
                 className="room-captions"
                 data-live={hostGlow ? "true" : undefined}
-                dir={locale === "he" ? "rtl" : "ltr"}
+                dir={isRtlInterviewLanguage(interviewLanguage) ? "rtl" : "ltr"}
                 aria-label={t("interview.liveTranscript")}
               >
                 <div ref={transcriptScrollRef} className="room-captions-scroll">

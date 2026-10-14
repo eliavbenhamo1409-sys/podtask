@@ -1,8 +1,10 @@
 # Podtask — project brief
 
-**What it is:** a Hebrew-first (he/en) web app where a student uploads an academic
+**What it is:** a Hebrew-first (he/en UI) web app where a student uploads an academic
 submission (PDF/DOCX/TXT) and is then interviewed about it, live and by voice, by an
-AI "podcast host" (אריה / Aria). The goal is to gauge how well the student
+AI "podcast host" (אריה / Aria). The interview itself runs in a language the student
+picks in the lobby (he / en / ar, `interviews.language`); the host speaks, listens and
+is transcribed in that language only. The goal is to gauge how well the student
 understands their own work. After the interview the system scores the answers and
 produces a report for the lecturer. Only the **student studio** is built so far;
 the lecturer/admin side exists in the schema but has no UI.
@@ -51,8 +53,11 @@ institution), history, profile, help.
 ## Working rules
 - Gates: `npm run check` (tsc + eslint) and `npm run build`. There are no tests;
   do not land behaviour changes in the interview room without a live run.
-- Keep `lib/realtime/host-text-heuristics.ts` in sync with the prompt in
-  `supabase/functions/_shared/realtime-instructions.ts` (ordinals, farewells).
+- Keep `lib/realtime/host-text-heuristics.ts` and `lib/realtime/host-directives.ts`
+  in sync with the prompt in `supabase/functions/_shared/realtime-instructions.ts`
+  (ordinals, farewells, system-note kinds) for all three interview languages.
+- Student transcripts go through `lib/realtime/student-text-guard.ts` before they
+  count as answers; rejected turns are `discarded_utterance:<kind>` system lines.
 - Hebrew copy uses feminine second person by default.
 - `podtask 2/` is the original static HTML design prototype, not app code.
 - Project skills for agents are in `.agents/skills/` (Supabase, Postgres).

@@ -109,6 +109,7 @@ export const MOCK_INTERVIEWS: StudentInterview[] = [
     assignmentId: "a4",
     status: "completed",
     currentState: "completed",
+    language: "he",
     startedAt: "2026-04-28T19:00:00.000Z",
     completedAt: "2026-04-28T19:11:42.000Z",
     durationSeconds: 702,

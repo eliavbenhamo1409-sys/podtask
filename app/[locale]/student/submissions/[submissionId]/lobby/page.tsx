@@ -13,6 +13,7 @@ import {
   SparkIcon,
 } from "@/components/podtask/icons";
 import { getSubmissionLobby } from "@/lib/student/student-service-server";
+import { InterviewLanguagePicker } from "./interview-language-picker";
 
 interface LobbyPageProps {
   params: Promise<{ locale: string; submissionId: string }>;
@@ -172,6 +173,13 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
                 </Chip>
               ))}
             </div>
+
+            {lobby.interview.id ? (
+              <InterviewLanguagePicker
+                interviewId={lobby.interview.id}
+                initial={lobby.interview.language}
+              />
+            ) : null}
 
             <div style={{ marginTop: 32 }}>
               <Link href={`/student/submissions/${submissionId}/mic-test`} className="btn btn-primary btn-lg" style={{ width: "100%" }}>

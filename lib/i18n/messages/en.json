@@ -182,7 +182,10 @@
     "tip3Body": "It's a conversation, not a recital. Trust your draft.",
     "stuckTitle": "Stuck on a question?",
     "stuckBody": "Say \"I'm not sure\" and Aria will rephrase or move on. No penalty.",
-    "estTimeMinutes": "~{minutes} min"
+    "estTimeMinutes": "~{minutes} min",
+    "languageTitle": "Interview language",
+    "languageHint": "The host will speak, listen and transcribe in this language only. You can change it until the interview starts.",
+    "languageSaveFailed": "We couldn't save your choice. Please try again."
   },
   "micTest": {
     "back": "Back to lobby",
@@ -320,7 +323,8 @@
     "recsMeta": "{count, plural, one {# recommendation} other {# recommendations}}",
     "transcriptMeta": "{questions, plural, one {# question} other {# questions}} · {messages, plural, one {# message} other {# messages}}",
     "transcriptSkipped": "You skipped this question",
-    "transcriptReplaced": "You asked for a different question, so it was swapped"
+    "transcriptReplaced": "You asked for a different question, so it was swapped",
+    "transcriptDiscarded": "An unclear segment (noise or another language) was left out of the evaluation"
   },
   "history": {
     "title": "Assignment history",

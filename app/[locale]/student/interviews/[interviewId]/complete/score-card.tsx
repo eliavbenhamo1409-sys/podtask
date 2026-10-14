@@ -609,10 +609,14 @@ interface TranscriptGroup {
   entries: { speaker: TranscriptSpeaker; content: string }[];
 }
 
-/** "skipped_question:N" / "replaced_question:N" markers saved by the room. */
+/**
+ * "skipped_question:N" / "replaced_question:N" / "discarded_utterance:<kind>"
+ * markers saved by the room.
+ */
 function noteKeyFor(content: string): string | null {
   if (/^skipped_question:\d+$/.test(content)) return "complete.transcriptSkipped";
   if (/^replaced_question:\d+$/.test(content)) return "complete.transcriptReplaced";
+  if (/^discarded_utterance:[a-z_]+$/.test(content)) return "complete.transcriptDiscarded";
   return null;
 }
 

@@ -1,13 +1,20 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  normalizeInterviewLanguage,
+  type InterviewLanguage,
+} from "@/lib/student/interview-language";
 
 export interface RealtimeSessionToken {
   clientSecret: string;
   expiresAt: string;
   model: string;
   voice: string;
-  language: "he" | "en";
+  /** The language the session was minted for (host speech + transcription). */
+  language: InterviewLanguage;
+  /** Prompt given to the transcription model; the room treats an echo of it as noise. */
+  transcriptionHint: string | null;
 }
 
 export interface RealtimeSessionError {
@@ -26,7 +33,10 @@ export async function createRealtimeSession(
 ): Promise<RealtimeSessionToken> {
   const sb = createClient();
   const { data, error } = await sb.functions.invoke<
-    | ({ ok: true } & RealtimeSessionToken)
+    | ({ ok: true } & Omit<RealtimeSessionToken, "language" | "transcriptionHint"> & {
+        language?: string;
+        transcriptionHint?: string | null;
+      })
     | RealtimeSessionError
   >("create-realtime-session", {
     body: { interviewId },
@@ -46,6 +56,10 @@ export async function createRealtimeSession(
     expiresAt: data.expiresAt,
     model: data.model,
     voice: data.voice,
-    language: data.language,
+    language: normalizeInterviewLanguage(data.language),
+    transcriptionHint:
+      typeof data.transcriptionHint === "string" && data.transcriptionHint
+        ? data.transcriptionHint
+        : null,
   };
 }

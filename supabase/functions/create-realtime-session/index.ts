@@ -10,6 +10,59 @@ declare const Deno: {
 const REALTIME_MODEL = "gpt-realtime";
 const REALTIME_VOICE_DEFAULT = "marin";
 const EXPECTED_QUESTION_COUNT = 5;
+// Input transcription is pinned to the interview language (ISO 639-1) so a
+// noisy or silent microphone can never surface as text in a random language.
+const TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+// Students mostly sit at a laptop; `far_field` is OpenAI's profile for that.
+// Overridable per assignment via settings.noise_reduction ("near_field" /
+// "far_field" / "off").
+const NOISE_REDUCTION_DEFAULT: "near_field" | "far_field" = "far_field";
+
+type InterviewLanguage = "he" | "en" | "ar";
+
+function toLanguage(value: unknown): InterviewLanguage | null {
+  return value === "he" || value === "en" || value === "ar" ? value : null;
+}
+
+/**
+ * Short prompt for the transcription model: it biases the output towards
+ * the interview language and the submission's vocabulary. Kept short on
+ * purpose; the browser treats an utterance that merely echoes it as noise.
+ */
+function buildTranscriptionHint(
+  language: InterviewLanguage,
+  assignmentTitle: string,
+  concepts: string[],
+): string {
+  const title = assignmentTitle.trim().slice(0, 80);
+  const terms = concepts
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0 && c.length <= 40)
+    .slice(0, 6)
+    .join(", ");
+  if (language === "he") {
+    return [
+      title ? `ראיון אקדמי בעברית על העבודה "${title}".` : "ראיון אקדמי בעברית על עבודה שהוגשה.",
+      terms ? `מונחים: ${terms}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (language === "ar") {
+    return [
+      title ? `مقابلة أكاديمية باللغة العربية حول العمل "${title}".` : "مقابلة أكاديمية باللغة العربية حول عمل مقدَّم.",
+      terms ? `مصطلحات: ${terms}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return [
+    title ? `Academic interview in English about the submission "${title}".` : "Academic interview in English about a submitted paper.",
+    terms ? `Terms: ${terms}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -61,12 +114,25 @@ Deno.serve(async (req) => {
         .maybeSingle(),
     ]);
 
-  const language = (assignment?.language ?? interview.language ?? "he") as
-    | "he"
-    | "en";
-  const voice =
-    (assignment?.settings as { realtime_voice?: string } | null)
-      ?.realtime_voice ?? REALTIME_VOICE_DEFAULT;
+  // The interview row carries the language the student chose in the lobby;
+  // the assignment language is only the fallback for rows created before
+  // that choice existed. The plan / analysis were generated in the
+  // assignment language (he / en).
+  const language: InterviewLanguage =
+    toLanguage(interview.language) ?? toLanguage(assignment?.language) ?? "he";
+  const planLanguage: "he" | "en" = assignment?.language === "en" ? "en" : "he";
+  const settings = (assignment?.settings ?? null) as {
+    realtime_voice?: string;
+    noise_reduction?: string;
+  } | null;
+  const voice = settings?.realtime_voice ?? REALTIME_VOICE_DEFAULT;
+  const noiseReduction =
+    settings?.noise_reduction === "off"
+      ? null
+      : settings?.noise_reduction === "near_field" ||
+          settings?.noise_reduction === "far_field"
+        ? settings.noise_reduction
+        : NOISE_REDUCTION_DEFAULT;
 
   // Pull the planned questions out of the plan blob. The host receives
   // the full list as part of its system prompt — it owns pacing and
@@ -116,8 +182,22 @@ Deno.serve(async (req) => {
     .filter((q) => q.question.length > 0)
     .slice(0, EXPECTED_QUESTION_COUNT);
 
+  const analysisConcepts = Array.isArray(analysis?.key_concepts)
+    ? (analysis!.key_concepts as unknown[]).filter(
+        (c): c is string => typeof c === "string",
+      )
+    : [];
+  // Vocabulary from the analysis only helps when it is in the interview
+  // language; otherwise the hint is the generic one-liner.
+  const transcriptionHint = buildTranscriptionHint(
+    language,
+    assignment?.title ?? "",
+    planLanguage === language ? analysisConcepts : [],
+  );
+
   const instructions = buildRealtimeInstructions({
     language,
+    planLanguage,
     assignmentTitle: assignment?.title ?? "",
     interviewDurationMinutes: assignment?.interview_duration_minutes ?? 12,
     questions: plannedQuestions,
@@ -159,9 +239,21 @@ Deno.serve(async (req) => {
       //     the host still answers without the student having to
       //     press anything; interrupt_response: true keeps barge-in
       //     working when the student starts speaking over the host.
+      //
+      // transcription.language pins the speech-to-text model to the
+      // interview language (it otherwise auto-detects per turn, and on
+      // noise it invents text in whatever language it guesses);
+      // transcription.prompt biases it towards the submission's vocabulary.
+      // noise_reduction filters the input before VAD and the model, so
+      // room noise is less likely to open a turn at all.
       audio: {
         input: {
-          transcription: { model: "gpt-4o-transcribe" },
+          transcription: {
+            model: TRANSCRIPTION_MODEL,
+            language,
+            prompt: transcriptionHint,
+          },
+          noise_reduction: noiseReduction ? { type: noiseReduction } : null,
           turn_detection: {
             type: "server_vad",
             threshold: 0.72,
@@ -260,6 +352,10 @@ Deno.serve(async (req) => {
       severity: "info",
       model: REALTIME_MODEL,
       voice,
+      language,
+      plan_language: planLanguage,
+      transcription_model: TRANSCRIPTION_MODEL,
+      noise_reduction: noiseReduction ?? "off",
       question_count_in_prompt: plannedQuestions.length,
       expected_question_count: EXPECTED_QUESTION_COUNT,
     },
@@ -272,5 +368,6 @@ Deno.serve(async (req) => {
     model: REALTIME_MODEL,
     voice,
     language,
+    transcriptionHint,
   });
 });

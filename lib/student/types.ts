@@ -1,3 +1,4 @@
+import type { InterviewLanguage } from "./interview-language";
 /**
  * UI-facing shapes for the student studio. These are what pages and
  * components consume; the DB rows are mapped into them in
@@ -55,6 +56,8 @@ export interface StudentInterview {
   assignmentId: string;
   status: InterviewStatus;
   currentState: InterviewRuntimeState;
+  /** Language the host speaks / listens in; chosen in the lobby. */
+  language: InterviewLanguage;
   startedAt?: string;
   completedAt?: string;
   durationSeconds?: number;

@@ -3,8 +3,13 @@
 // Scores a completed interview with gpt-4.1 and writes the `reports` row the
 // /complete page polls for. The transcript is grouped by planned question;
 // `system:` lines carry structured events written by the interview room:
-//   skipped_question:N   — the student skipped planned question N (penalised)
-//   replaced_question:N  — the student swapped question N once (no penalty)
+//   skipped_question:N          — the student skipped planned question N (penalised)
+//   replaced_question:N         — the student swapped question N once (no penalty)
+//   discarded_utterance:<kind>  — one spoken turn was rejected by the transcript
+//                                 guard (noise / off_language); not an answer
+// Student lines that start with a [SYSTEM NOTE] / [הודעת מערכת] prefix are the
+// room's steering text for the host, not speech, and are dropped here.
+// The report is written in the interview language (he / en / ar).
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient, userClient } from "../_shared/supabase.ts";
 import {
@@ -113,7 +118,8 @@ Deno.serve(async (req) => {
   const transcript = buildTranscript(rows, plan);
   const { skipped, replaced } = collectQuestionEvents(rows);
 
-  const language = (assignment?.language === "en" ? "en" : interview.language === "en" ? "en" : "he") as "he" | "en";
+  const language: ReportLanguage =
+    toLanguage(interview.language) ?? toLanguage(assignment?.language) ?? "he";
 
   let report: ReportResult;
   try {
@@ -210,6 +216,20 @@ Deno.serve(async (req) => {
   return jsonResponse({ ok: true, reportId, report });
 });
 
+type ReportLanguage = "he" | "en" | "ar";
+
+function toLanguage(value: unknown): ReportLanguage | null {
+  return value === "he" || value === "en" || value === "ar" ? value : null;
+}
+
+const DIRECTIVE_PREFIXES = ["[הודעת מערכת]", "[SYSTEM NOTE]"];
+
+/** Steering text the room injects as user messages; never student speech. */
+function isHostDirective(text: string): boolean {
+  const t = text.trimStart();
+  return DIRECTIVE_PREFIXES.some((p) => t.startsWith(p));
+}
+
 interface MessageRow {
   speaker: string;
   message_type: string;
@@ -256,6 +276,7 @@ function buildTranscript(rows: MessageRow[], plan: { questions?: PlanQ[] } | nul
   for (const row of rows) {
     const text = (row.content ?? "").trim();
     if (!text) continue;
+    if (row.speaker === "student" && isHostDirective(text)) continue;
     const key = row.plan_question_id ?? "_unbound";
     if (!groups.has(key)) {
       if (key === "_unbound") {
@@ -280,7 +301,7 @@ function buildTranscript(rows: MessageRow[], plan: { questions?: PlanQ[] } | nul
 }
 
 function buildScoringMessages({ language, assignmentTitle, analysis, plan, transcript, skipped, replaced }: {
-  language: "he" | "en";
+  language: ReportLanguage;
   assignmentTitle: string;
   analysis: ScoringAnalysis | null;
   plan: { questions?: PlanQ[] } | null;
@@ -288,8 +309,8 @@ function buildScoringMessages({ language, assignmentTitle, analysis, plan, trans
   skipped: number[];
   replaced: number[];
 }): ResponsesMessage[] {
-  const isHebrew = language === "he";
-  const langDirective = isHebrew ? "Output every string field in Hebrew." : "Output every string field in English.";
+  const languageName = language === "he" ? "Hebrew" : language === "ar" ? "Arabic" : "English";
+  const langDirective = `Output every string field in ${languageName}.`;
   const totalPlanned = plan?.questions?.length ?? 0;
 
   const system = [
@@ -307,6 +328,11 @@ function buildScoringMessages({ language, assignmentTitle, analysis, plan, trans
     "Lines that start with `system:` are events recorded by the interview software, not speech:",
     "  - `skipped_question:N` means the student chose to skip planned question N without answering it. Treat that question as unanswered: it earns no credit, so lower overall_score and the rubric scores in proportion to the share of the plan it represents (one skipped question out of five costs roughly a fifth of the available credit), list the skip explicitly under weaknesses, and never infer understanding of that question's topic from elsewhere.",
     "  - `replaced_question:N` means the student asked once for a different question on the same material. This is allowed and carries no penalty; grade the replacement answer normally.",
+    "  - `discarded_utterance:<kind>` means the interview software rejected one spoken turn as unusable (background noise, speech in another language, or a transcription artefact). It is not an answer: ignore it completely, neither credit nor penalise it, and do not mention it unless the student gave no usable answer at all.",
+    `The interview was conducted in ${languageName}. Judge communication on content and structure only; never penalise accent, dialect or obvious transcription errors.`,
+    "Relevance: credit only what the student says about THIS submission (the document summarised below). Statements about other courses, other assignments, earlier interviews or generic chat unrelated to the document earn no credit; if an answer is mostly off-topic, say so explicitly under weaknesses and do not infer understanding from it.",
+    "Transcription artefacts: a student line that is clearly not the student answering (a stray phrase such as \"thank you for watching\", a looping word, or text in a different language than the interview language) must be ignored, not graded.",
+    "Never attribute to the student anything that does not appear in the transcript, and never fill gaps from the document summary: the summary describes the submission, not what the student said.",
     "If the transcript is essentially empty (e.g., no student answers), give the lowest scores and explain the lack of evidence.",
   ].join("\n");
 

@@ -30,6 +30,7 @@ export default async function InterviewPage({ params }: InterviewPageProps) {
       assignmentTitle={data.assignment.title}
       questions={data.interview.questions}
       locale={locale}
+      interviewLanguage={data.interview.language}
       studentName={firstName}
       studentInitial={profile.avatarInitial}
     />
