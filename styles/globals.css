@@ -3069,3 +3069,306 @@
     resize: vertical;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Exam integrity (2026-10-16): monitoring badge + return notice in the room,
+   tracking line under the self-view, consent notice, mic-test camera picker
+   and exemption form, the lecturer's Exam Integrity panel + timeline.
+   --------------------------------------------------------------------------- */
+@layer components {
+  .room-monitor-badge {
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .room-monitor-sync {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+    flex-shrink: 0;
+  }
+  .room-monitor-sync[data-sync="pending"] {
+    background: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+  }
+  .room-monitor-sync[data-sync="retrying"],
+  .room-monitor-sync[data-sync="offline"] {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+  }
+  .room-monitor-count {
+    padding-inline-start: 8px;
+    border-inline-start: 1px solid rgba(15, 23, 42, 0.15);
+    font-weight: 700;
+  }
+  .room-return-notice {
+    position: fixed;
+    top: 84px;
+    inset-inline: 0;
+    margin: 0 auto;
+    width: min(560px, calc(100% - 32px));
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: rgba(240, 249, 255, 0.97);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 16px 40px rgba(14, 165, 233, 0.16);
+  }
+  .room-return-notice[data-repeat="true"] {
+    background: rgba(255, 251, 235, 0.97);
+    border-color: rgba(245, 158, 11, 0.45);
+    box-shadow: 0 16px 40px rgba(245, 158, 11, 0.16);
+  }
+  .room-cam-tracking {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: -6px 0 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgb(var(--muted));
+  }
+  .room-cam-tracking-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #94a3b8;
+  }
+  .room-cam-tracking[data-tone="ok"] {
+    color: #047857;
+  }
+  .room-cam-tracking[data-tone="ok"] .room-cam-tracking-dot {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+  }
+  .room-cam-tracking[data-tone="warn"] {
+    color: #b45309;
+  }
+  .room-cam-tracking[data-tone="warn"] .room-cam-tracking-dot {
+    background: #f59e0b;
+  }
+
+  .consent-notice {
+    margin-top: 20px;
+    padding: 18px 20px;
+    border-radius: 20px;
+    background: rgba(255, 251, 235, 0.85);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+  .consent-notice-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 15px;
+  }
+  .consent-notice-body {
+    margin: 8px 0 0;
+    font-size: 15px;
+    line-height: 1.65;
+    font-weight: 600;
+  }
+  .consent-notice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .consent-notice-grid h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .mic-cam-select {
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid rgb(var(--line));
+    background: rgba(255, 255, 255, 0.9);
+    font: inherit;
+    font-size: 13px;
+    max-width: 100%;
+  }
+  .mic-exemption {
+    margin-top: 16px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(240, 249, 255, 0.7);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    display: grid;
+    gap: 10px;
+  }
+  .mic-exemption textarea {
+    width: 100%;
+    min-height: 64px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgb(var(--line));
+    font: inherit;
+    font-size: 13px;
+    resize: vertical;
+  }
+
+  .lx-exam-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .lx-exam-stat {
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgb(var(--line));
+  }
+  .lx-exam-stat[data-class="review"] {
+    border-color: rgba(244, 63, 94, 0.3);
+    background: rgba(255, 241, 245, 0.7);
+  }
+  .lx-exam-stat[data-class="monitoring"] {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(255, 251, 235, 0.7);
+  }
+  .lx-exam-stat[data-class="technical"] {
+    border-color: rgba(56, 189, 248, 0.35);
+    background: rgba(240, 249, 255, 0.7);
+  }
+  .lx-exam-stat-n {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .lx-exam-stat-l {
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .lx-exam-stat-s {
+    font-size: 11px;
+    margin-top: 2px;
+    color: rgb(var(--muted));
+  }
+  .lx-timeline {
+    direction: ltr;
+    margin-top: 10px;
+    padding: 12px 8px 6px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgb(var(--line));
+  }
+  .lx-timeline-axis {
+    position: relative;
+    height: 18px;
+    font-size: 10px;
+    color: rgb(var(--muted));
+  }
+  .lx-timeline-q {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-weight: 700;
+  }
+  .lx-timeline-q::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 14px;
+    width: 1px;
+    height: 6px;
+    background: rgba(15, 23, 42, 0.35);
+  }
+  .lx-timeline-lane {
+    position: relative;
+    height: 22px;
+    margin-top: 6px;
+    border-radius: 8px;
+    background: rgba(148, 163, 184, 0.14);
+  }
+  .lx-timeline-lane-label {
+    position: absolute;
+    left: 6px;
+    top: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: rgb(var(--muted));
+    pointer-events: none;
+  }
+  .lx-timeline-mark {
+    position: absolute;
+    top: 4px;
+    height: 14px;
+    min-width: 6px;
+    border-radius: 6px;
+    opacity: 0.9;
+  }
+  .lx-timeline-mark[data-class="technical"] {
+    background: #38bdf8;
+  }
+  .lx-timeline-mark[data-class="monitoring"] {
+    background: #f59e0b;
+  }
+  .lx-timeline-mark[data-class="review"] {
+    background: #f43f5e;
+  }
+  .lx-timeline-mark[data-open="true"] {
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0 4px,
+      rgba(255, 255, 255, 0.55) 4px 8px
+    );
+  }
+  .lx-timeline-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: rgb(var(--muted));
+    direction: inherit;
+  }
+  .lx-timeline-legend i {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    margin-inline-end: 4px;
+    vertical-align: -1px;
+  }
+  .lx-exam-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-top: 1px solid rgba(15, 23, 42, 0.06);
+    font-size: 13px;
+  }
+  .lx-exam-row-class {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 6px;
+  }
+  .lx-exam-row-class[data-class="technical"] {
+    background: #38bdf8;
+  }
+  .lx-exam-row-class[data-class="monitoring"] {
+    background: #f59e0b;
+  }
+  .lx-exam-row-class[data-class="review"] {
+    background: #f43f5e;
+  }
+  .lx-exam-time {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: rgb(var(--muted));
+    min-width: 46px;
+  }
+}

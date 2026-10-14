@@ -34,7 +34,8 @@ import {
   resolveIntegritySettings,
   type IntegritySettings,
 } from "@/lib/integrity/settings";
-import type { HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
+import type { CameraExemptionReason, HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
+import type { IntegritySendOutcome } from "@/lib/integrity/event-queue";
 
 type SbClient = SupabaseClient<Database>;
 
@@ -382,6 +383,14 @@ export async function uploadAndCreateSubmissionSb(
     .eq("assignment_id", assignmentId)
     .eq("student_id", userId)
     .maybeSingle();
+
+  // A submission that already went through preparation keeps its file: the
+  // plan (and possibly the interview) is built on it, and the pipeline owns
+  // the row from here (RLS allows student edits only while `uploaded`). The
+  // student simply continues to the existing interview.
+  if (existing && existing.status !== "uploaded") {
+    return rowToSubmission(existing);
+  }
 
   let submissionId = existing?.id;
   if (!submissionId) {
@@ -823,14 +832,42 @@ export async function recordConsentSb(
   return data?.ok === true;
 }
 
+/**
+ * Ships one telemetry batch. The outcome drives the queue: a network error
+ * or a 5xx is retried, a 4xx (interview over, batch refused, flood guard)
+ * is dropped, and 2xx is stored. The server dedupes on the client event id.
+ */
 export async function recordIntegrityEventsSb(
   sb: SbClient,
   interviewId: string,
   events: IntegrityClientEvent[],
   opts: { keepalive?: boolean } = {},
-): Promise<void> {
-  if (events.length === 0) return;
-  await callEdge(sb, "interview-control", { action: "events", interviewId, events }, opts);
+): Promise<IntegritySendOutcome> {
+  if (events.length === 0) return "ok";
+  let status: number;
+  try {
+    ({ status } = await callEdge(sb, "interview-control", { action: "events", interviewId, events }, opts));
+  } catch {
+    return "retry";
+  }
+  if (status >= 200 && status < 300) return "ok";
+  if (status === 401 || status >= 500 || status === 0) return "retry";
+  return "drop";
+}
+
+export async function recordCameraExemptionSb(
+  sb: SbClient,
+  interviewId: string,
+  reason: CameraExemptionReason,
+  note: string | null,
+): Promise<boolean> {
+  const { data } = await callEdge<{ ok: boolean }>(sb, "interview-control", {
+    action: "camera_exemption",
+    interviewId,
+    reason,
+    note,
+  });
+  return data?.ok === true;
 }
 
 export async function recordInterviewFlagSb(

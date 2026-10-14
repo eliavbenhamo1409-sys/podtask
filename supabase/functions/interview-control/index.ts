@@ -9,7 +9,10 @@
 //   action: "start"    ready -> in_progress (or resume an in_progress interview);
 //                      returns the question outline (ids + topics, no text),
 //                      the resolved integrity settings and resume information
-//   action: "events"   batch of client telemetry (tab / focus / camera / nudges)
+//   action: "events"   batch of client telemetry (tab / focus / camera / nudges);
+//                      validated + deduped by `_shared/integrity-events.ts`
+//   action: "camera_exemption" the student cannot use a camera in a
+//                      camera-required interview (reason recorded, never a verdict)
 //   action: "flag"     a review item raised by the host's `flag_answer` tool
 //   action: "disconnect" the room is closing unexpectedly (pagehide / failure)
 //
@@ -24,34 +27,15 @@ import {
   resolveIntegritySettings,
   type IntegritySettings,
 } from "../_shared/integrity-settings.ts";
+import {
+  MAX_EVENTS_PER_INTERVIEW,
+  normalizeEventBatch,
+  parseCameraExemption,
+} from "../_shared/integrity-events.ts";
 
 declare const Deno: { serve: (h: (req: Request) => Response | Promise<Response>) => void };
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
-const MAX_EVENTS_PER_BATCH = 50;
-const MAX_PAYLOAD_CHARS = 2000;
-const MAX_EVENT_DURATION_MS = 60 * 60 * 1000;
-
-const EVENT_KINDS = new Set([
-  "visibility_hidden",
-  "window_blur",
-  "fullscreen_exit",
-  "fullscreen_enter",
-  "page_hidden",
-  "offline",
-  "camera_started",
-  "camera_denied",
-  "camera_unavailable",
-  "camera_off",
-  "camera_reconnected",
-  "face_missing",
-  "multiple_faces",
-  "silence_nudge",
-  "own_words_prompt",
-  "mic_muted",
-  "disconnect",
-  "reconnect",
-]);
 
 const FLAG_CATEGORIES = new Set([
   "contradiction",
@@ -128,6 +112,8 @@ Deno.serve(async (req) => {
       return handleStart(sb, interview, assignment, settings, auth.userId);
     case "events":
       return handleEvents(sb, interview, body);
+    case "camera_exemption":
+      return handleCameraExemption(sb, interview, settings, body, auth.userId);
     case "flag":
       return handleFlag(sb, interview, settings, body);
     case "disconnect":
@@ -330,62 +316,104 @@ async function handleStart(
   });
 }
 
-function parseIso(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const t = Date.parse(value);
-  if (!Number.isFinite(t)) return null;
-  // Reject timestamps far in the future (clock games); allow 5 min skew.
-  if (t > Date.now() + 5 * 60_000) return null;
-  return new Date(t).toISOString();
-}
-
-function compactPayload(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const json = JSON.stringify(value);
-  if (json.length > MAX_PAYLOAD_CHARS) return { truncated: true };
-  return value as Record<string, unknown>;
-}
-
 async function handleEvents(sb: Sb, interview: InterviewRow, body: Record<string, unknown>) {
   if (!isRunning(interview.status) && !isRecentlyCompleted(interview)) {
     return jsonResponse({ ok: false, error: "interview_not_running" }, 409);
   }
-  const events = Array.isArray(body.events) ? body.events.slice(0, MAX_EVENTS_PER_BATCH) : [];
-  const rows: Record<string, unknown>[] = [];
-  for (const raw of events) {
-    if (!raw || typeof raw !== "object") continue;
-    const e = raw as Record<string, unknown>;
-    const kind = typeof e.kind === "string" ? e.kind : "";
-    if (!EVENT_KINDS.has(kind)) continue;
-    const startedAt = parseIso(e.startedAt) ?? new Date().toISOString();
-    const endedAt = parseIso(e.endedAt);
-    let durationMs: number | null =
-      typeof e.durationMs === "number" && Number.isFinite(e.durationMs)
-        ? Math.round(e.durationMs)
-        : null;
-    if (durationMs === null && endedAt) {
-      durationMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
-    }
-    if (durationMs !== null) durationMs = Math.max(0, Math.min(MAX_EVENT_DURATION_MS, durationMs));
-    rows.push({
-      interview_id: interview.id,
-      student_id: interview.student_id,
-      plan_question_id:
-        typeof e.planQuestionId === "string" && e.planQuestionId.length <= 64
-          ? e.planQuestionId
-          : null,
-      kind,
-      source: "client",
-      started_at: startedAt,
-      ended_at: endedAt,
-      duration_ms: durationMs,
-      payload: compactPayload(e.payload),
-    });
+  const { inserts, closes, dropped } = normalizeEventBatch(body.events, {
+    interviewId: interview.id,
+    studentId: interview.student_id,
+    now: Date.now(),
+    newId: () => crypto.randomUUID(),
+  });
+  if (inserts.length === 0) return jsonResponse({ ok: true, recorded: 0, dropped });
+
+  // Flood guard: one interview never stores more than MAX_EVENTS_PER_INTERVIEW
+  // rows. 429 tells the room to drop the batch instead of retrying it.
+  const { count } = await sb
+    .from("interview_integrity_events")
+    .select("id", { count: "exact", head: true })
+    .eq("interview_id", interview.id);
+  if ((count ?? 0) >= MAX_EVENTS_PER_INTERVIEW) {
+    return jsonResponse({ ok: false, error: "event_limit" }, 429);
   }
-  if (rows.length === 0) return jsonResponse({ ok: true, recorded: 0 });
-  const { error } = await sb.from("interview_integrity_events").insert(rows);
+
+  // Which of this batch's closes belong to intervals an EARLIER batch left
+  // open? One select, before the upsert, so rows this batch inserts whole
+  // (open + close collapsed) never need a second write.
+  let stillOpen = new Set<string>();
+  if (closes.length > 0) {
+    const { data: openRows } = await sb
+      .from("interview_integrity_events")
+      .select("event_id")
+      .eq("interview_id", interview.id)
+      .in("event_id", closes.map((c) => c.event_id))
+      .is("ended_at", null);
+    stillOpen = new Set(((openRows ?? []) as { event_id: string }[]).map((r) => r.event_id));
+  }
+
+  // First copy wins; a retried batch or a close that arrives after its open
+  // is a no-op here.
+  const { error } = await sb
+    .from("interview_integrity_events")
+    .upsert(inserts, { onConflict: "interview_id,event_id", ignoreDuplicates: true });
   if (error) return errorResponse("events_insert_failed", 500);
-  return jsonResponse({ ok: true, recorded: rows.length });
+
+  // Fill in the end of those intervals. Only rows still open are touched
+  // (a stale re-sent open never reopens a closed interval, and a close is
+  // applied once).
+  let closed = 0;
+  for (const c of closes) {
+    if (!stillOpen.has(c.event_id)) continue;
+    const { data } = await sb
+      .from("interview_integrity_events")
+      .update({ ended_at: c.ended_at, duration_ms: c.duration_ms, payload: c.payload })
+      .eq("interview_id", interview.id)
+      .eq("event_id", c.event_id)
+      .is("ended_at", null)
+      .select("id");
+    closed += data?.length ?? 0;
+  }
+  return jsonResponse({ ok: true, recorded: inserts.length, closed, dropped });
+}
+
+/**
+ * A camera-required interview started without a camera: the student picked
+ * a reason (accessibility, no camera, permission blocked, hardware failure,
+ * other) before the room. Stored as a client event; the lecturer sees it
+ * next to the camera status. It is a recorded exception, not a verdict.
+ */
+async function handleCameraExemption(
+  sb: Sb,
+  interview: InterviewRow,
+  settings: IntegritySettings,
+  body: Record<string, unknown>,
+  userId: string,
+) {
+  if (interview.status !== "ready" && !isRunning(interview.status)) {
+    return jsonResponse({ ok: false, error: "interview_not_running" }, 409);
+  }
+  const exemption = parseCameraExemption(body);
+  if (!exemption) return errorResponse("invalid_exemption", 400);
+  const now = new Date().toISOString();
+  const { error } = await sb.from("interview_integrity_events").insert({
+    interview_id: interview.id,
+    student_id: interview.student_id,
+    plan_question_id: null,
+    kind: "camera_exemption",
+    source: "client",
+    started_at: now,
+    payload: { reason: exemption.reason, note: exemption.note, camera_mode: settings.camera },
+  });
+  if (error) return errorResponse("exemption_insert_failed", 500);
+  await sb.from("system_events").insert({
+    actor_id: userId,
+    entity_type: "interview",
+    entity_id: interview.id,
+    event_type: "integrity.camera_exemption",
+    payload: { reason: exemption.reason },
+  });
+  return jsonResponse({ ok: true });
 }
 
 async function handleFlag(

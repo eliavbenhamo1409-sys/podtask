@@ -5,9 +5,10 @@
  * sync (the edge functions cannot import from `lib/`).
  *
  * Every feature is a flag an institution can turn off. Defaults:
- *   - lecturer assignments: camera on (asked, never forced), activity
- *     telemetry on, gentle silence nudges, overlap check, host flags,
- *     per-answer evaluation, consent screen.
+ *   - lecturer assignments: camera REQUIRED to start (a recorded exemption
+ *     path exists for accessibility and hardware problems), head orientation
+ *     on, activity telemetry on, gentle silence nudges, overlap check, host
+ *     flags, per-answer evaluation, consent screen.
  *   - personal (self-initiated) assignments: no camera, no activity
  *     telemetry; the conversational features stay on.
  */
@@ -15,8 +16,13 @@
 export type CameraMode = "off" | "on" | "required";
 
 export interface IntegritySettings {
-  /** off = never asked; on = asked, interview continues if declined; required = must be granted to start. */
+  /**
+   * off = never asked; on = asked, interview continues if declined;
+   * required = must be granted to start (or a camera exemption recorded).
+   */
   camera: CameraMode;
+  /** Estimate head orientation on-device (sustained turn away / down). Needs the camera. */
+  headPose: boolean;
   /** Record tab / focus / fullscreen / connection events during the interview. */
   activityMonitoring: boolean;
   /** Ask for fullscreen when the room opens (soft, never enforced). */
@@ -75,7 +81,8 @@ export function resolveIntegritySettings(
       : {};
   const personal = ctx.personal;
   return {
-    camera: asCamera(raw.camera, personal ? "off" : "on"),
+    camera: asCamera(raw.camera, personal ? "off" : "required"),
+    headPose: asBool(raw.head_pose, true),
     activityMonitoring: asBool(raw.activity_monitoring, !personal),
     fullscreen: asBool(raw.fullscreen, false),
     silenceNudgeSeconds: asNudgeSeconds(raw.silence_nudge_seconds, 20),
@@ -90,6 +97,7 @@ export function resolveIntegritySettings(
 /** The jsonb shape stored under `assignments.settings.integrity`. */
 export interface IntegritySettingsInput {
   camera?: CameraMode;
+  head_pose?: boolean;
   activity_monitoring?: boolean;
   fullscreen?: boolean;
   silence_nudge_seconds?: number;

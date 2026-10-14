@@ -97,6 +97,38 @@ export function ConsentClient({
           <p>{t("consent.p3")}</p>
         </div>
 
+        {/* Exam-integrity notice: what is monitored, what cannot be seen, what is stored. */}
+        {cameraOn || activityMonitoring ? (
+          <div className="consent-notice" role="note">
+            <div className="consent-notice-title">{t("consent.monitorTitle")}</div>
+            <p className="consent-notice-body">
+              {cameraOn && activityMonitoring
+                ? t("consent.monitorBodyBoth")
+                : cameraOn
+                  ? t("consent.monitorBodyCamera")
+                  : t("consent.monitorBodyTabs")}
+            </p>
+            <div className="consent-notice-grid">
+              <div>
+                <h4>{t("consent.cannotTitle")}</h4>
+                <ul className="consent-list">
+                  {activityMonitoring ? <li>{t("consent.cannotTabs")}</li> : null}
+                  {cameraOn ? <li>{t("consent.cannotCamera")}</li> : null}
+                  <li>{t("consent.cannotProof")}</li>
+                </ul>
+              </div>
+              <div>
+                <h4>{t("consent.storedTitle")}</h4>
+                <ul className="consent-list">
+                  {activityMonitoring ? <li>{t("consent.storedTabs")}</li> : null}
+                  {cameraOn ? <li>{t("consent.storedCamera")}</li> : null}
+                  <li>{t("consent.storedNoVideo")}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div
           className="card"
           style={{

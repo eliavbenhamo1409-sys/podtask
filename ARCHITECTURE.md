@@ -210,9 +210,11 @@ or resume), which returns the outline (ids + topics, no text), the resolved
   `TurnTimingMetadata`: latency from the host's playback stop, speech length,
   barge-in, mute toggles, hidden/blur counters) with a `clientId` for dedupe;
 - runs `ActivityMonitor` (visibility, blur, fullscreen, pagehide, offline)
-  and `CameraMonitor` (self-view + MediaPipe face presence on-device, no
-  frames leave the browser; the wasm runtime is loaded from jsDelivr, the
-  model from `/models/`) and ships events through `IntegrityEventQueue`;
+  and `CameraMonitor` (self-view + MediaPipe Face Landmarker on-device in a
+  Web Worker: face count and head orientation only, no frames leave the
+  browser; the wasm runtime is loaded from jsDelivr, the model from
+  `/models/face_landmarker.task`, see the exam-integrity section below)
+  and ships events through `IntegrityEventQueue`;
 - nudges gently after `silenceNudgeSeconds` of silence on the student's turn
   (two per question at most, `buildSilenceNudgeDirective`), and asks once for
   the idea "in your own words" when an answer matches the submitted text
@@ -225,6 +227,63 @@ Feature flags live in `assignments.settings.integrity` and are resolved by
 silence nudge seconds, overlap check, host flags, per-answer evaluation,
 consent). Personal (self-initiated) assignments default to no camera and no
 activity telemetry.
+
+### Exam integrity layer (2026-10-16): tab monitoring + camera proctoring
+
+Built on the telemetry above; nothing here changes the knowledge score.
+
+- **Event engine** (`lib/integrity/types.ts`, `_shared/integrity-events.ts`,
+  migration `20260516000001_integrity_event_engine.sql`): every event carries
+  a client UUID (`event_id`, unique per interview) and a `client_seq`.
+  Interval kinds (`visibility_hidden`, `face_missing`, `multiple_faces`,
+  `head_away`, `tracking_unavailable`) are sent twice under the same id:
+  once when they open, once when they close. `interview-control` upserts
+  with ignore-duplicates and then fills `ended_at` on rows still open, so a
+  browser that dies mid-interval leaves the start behind and a retried or
+  re-sent batch never duplicates. `created_at` is the server-received time.
+  Per-interview cap 3000 rows (429 → the room drops the batch). Spec names:
+  TAB_HIDDEN/TAB_RETURNED = `visibility_hidden` + `tab_returned`,
+  CAMERA_DISCONNECTED = `camera_off`, CAMERA_PERMISSION_DENIED =
+  `camera_denied`, NO_FACE = `face_missing`, HEAD_AWAY = `head_away`.
+- **Queue** (`IntegrityEventQueue`): batches of ≤ 50 every 4 s, retry with
+  backoff on network / 5xx, drop on 4xx, re-flush on `online`, unsent buffer
+  mirrored to `sessionStorage` and re-sent after a reload (same ids), one
+  keepalive batch on `pagehide`. Sync state feeds the room's badge.
+- **Tab monitoring** (`ActivityMonitor`): `visibilitychange` is the source
+  of truth; a hidden episode shorter than 300 ms is flicker and dropped;
+  `blur` alone is a `window_blur` (≥ 1.5 s) and never a tab exit;
+  `pagehide` closes an open episode without a return. The room shows
+  "✓ ניטור הבחינה פעיל" with a live exit counter and a calm notice on
+  return (a firmer reminder from the third exit; nothing is ever failed).
+- **Camera** (`CameraMonitor` + `face-worker.ts` + `PresenceTracker` +
+  `head-pose.ts`): MediaPipe Face Landmarker (model vendored at
+  `public/models/face_landmarker.task`, wasm from jsDelivr) runs in a Web
+  Worker on 320×240 bitmaps at ~1.4 fps, adaptive down to 0.5 fps when
+  inference is slow; main-thread fallback when workers are unavailable. The
+  worker returns only a face count and yaw/pitch. Filters: no face ≥ 5 s
+  opens `face_missing`, closes after 0.8 s of presence; ≥ 2 faces for ≥ 2 s
+  opens `multiple_faces`; |yaw| ≥ 35° or |pitch| ≥ 30° for ≥ 4 s opens
+  `head_away` (hysteresis 25°/20°, 1.5 s to close). Camera integrity:
+  track `ended` → `camera_off`, track muted ≥ 3 s → `camera_off`
+  (reason muted), no new frames for 4 s or a detector failure →
+  `tracking_unavailable` (distinct from "no face"). Mic-test: device picker,
+  frame check, and a recorded **camera exemption** (reason + note, action
+  `camera_exemption`) for camera-required interviews. Default for lecturer
+  assignments is now `camera: "required"` (`settings.integrity.camera`
+  relaxes it; `head_pose: false` disables orientation).
+- **Lecturer** (`components/lecturer/exam-integrity.tsx`,
+  `lib/lecturer/exam-integrity.ts`): "Exam Integrity" panel with counts,
+  away time, camera state / exemption, a three-lane timeline with question
+  marks, and every event classified technical / monitoring / needs a check
+  (hidden ≥ 10 s, no face ≥ 20 s, head away ≥ 10 s, any multiple faces, or
+  an interval that never closed). Copy insists on a human check.
+- **Privacy**: no frames, landmarks or embeddings leave the worker; no
+  video is recorded; students cannot read any events (no select policy);
+  retention hook `purge_interview_integrity_events(interval)` (not
+  scheduled). Limits stated to the student and the lecturer: second device,
+  split screen, virtual camera and gaze are not detectable.
+- **Tests**: `node --experimental-transform-types --import
+  ./tests/integrity/register.mjs --test "tests/integrity/*.test.ts"`.
 
 ### Lecturer side
 

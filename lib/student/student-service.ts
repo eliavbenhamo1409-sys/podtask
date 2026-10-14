@@ -45,7 +45,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import { MOCK_MODE } from "@/lib/env";
 import { isUuidLike } from "@/lib/utils";
 import { resolveIntegritySettings } from "@/lib/integrity/settings";
-import type { HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
+import type { CameraExemptionReason, HostFlagInput, IntegrityClientEvent } from "@/lib/integrity/types";
+import type { IntegritySendOutcome } from "@/lib/integrity/event-queue";
 
 /** Feature flags the demo walkthrough runs with (no document, no host tools). */
 export function mockIntegritySettings() {
@@ -571,12 +572,27 @@ export async function recordIntegrityEvents(
   interviewId: string,
   events: IntegrityClientEvent[],
   opts: { keepalive?: boolean } = {},
-): Promise<void> {
+): Promise<IntegritySendOutcome> {
   if (shouldUseRealBackend(interviewId)) {
     const { recordIntegrityEventsSb } = await import("./student-service-supabase");
     const sb = await getSb();
-    await recordIntegrityEventsSb(sb, interviewId, events, opts);
+    return await recordIntegrityEventsSb(sb, interviewId, events, opts);
   }
+  // Mock rooms keep the monitors running (the UI is real) but store nothing.
+  return "ok";
+}
+
+export async function recordCameraExemption(
+  interviewId: string,
+  reason: CameraExemptionReason,
+  note: string | null,
+): Promise<boolean> {
+  if (shouldUseRealBackend(interviewId)) {
+    const { recordCameraExemptionSb } = await import("./student-service-supabase");
+    const sb = await getSb();
+    return await recordCameraExemptionSb(sb, interviewId, reason, note);
+  }
+  return true;
 }
 
 export async function recordInterviewFlag(

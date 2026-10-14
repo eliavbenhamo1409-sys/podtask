@@ -196,6 +196,8 @@ export default async function LecturerInterviewPage({ params }: PageProps) {
           flags={data.flags}
           events={data.events}
           questions={data.questions}
+          messages={data.messages}
+          interview={{ startedAt: data.interview.startedAt, completedAt: data.interview.completedAt }}
           summary={data.interview.integritySummary}
           integrity={data.assignment.integrity}
           isGuest={data.student.isGuest}

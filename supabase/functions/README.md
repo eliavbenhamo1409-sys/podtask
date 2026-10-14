@@ -10,7 +10,7 @@ deploy one function at a time.
 | Slug | Called from | Purpose | Secrets |
 | --- | --- | --- | --- |
 | `prepare-submission` | processing screen (`prepareSubmissionInvokeSb`) | Parse the uploaded file, analyze it, write a POOL of 12 typed questions (`kind`, verbatim `anchor`, `key_points`) and a seeded selection of 5 (`plan.questions`; the pool stays in `plan.pool`), store the raw document text (TXT/DOCX) for the overlap check, create the `interviews` row. Idempotent once `interview_ready`. | `openai_realtime2` |
-| `interview-control` | room page (`startInterviewSb`), consent screen, the room's telemetry queue | Service-role state changes for the student side: `consent` (records the integrity notice acknowledgement), `start` (ready → in_progress or resume; requires the consent when the assignment asks for one; returns the outline WITHOUT question text, the integrity settings and the resume point), `events` (client telemetry batch → `interview_integrity_events`), `flag` (the host's `flag_answer` → `interview_flags`), `disconnect`. | — |
+| `interview-control` | room page (`startInterviewSb`), consent screen, mic-test (exemption), the room's telemetry queue | Service-role state changes for the student side: `consent` (records the integrity notice acknowledgement), `start` (ready → in_progress or resume; requires the consent when the assignment asks for one; returns the outline WITHOUT question text, the integrity settings and the resume point), `events` (client telemetry batch → `interview_integrity_events`; validated by `_shared/integrity-events.ts`, deduped on the client `event_id`, open/close intervals, 3000 rows per interview), `camera_exemption` (camera-required interview without a camera: reason + note), `flag` (the host's `flag_answer` → `interview_flags`), `disconnect`. | — |
 | `create-realtime-session` | interview room (`createRealtimeSession`) | Mint an OpenAI Realtime client secret with the system prompt from `_shared/realtime-instructions.ts` (he / en / ar). **Requires `interviews.status = in_progress`**, is rate limited per interview (8 per 10 min, 40 total, counted from `system_events`) and acquires one `realtime` capacity slot per interview (`ai_capacity`; full pool → `503 at_capacity` + `retryAfterSeconds`). Adds the `flag_answer` tool when the assignment enables host flags, passes the conversation-care rules (silence nudges, own words) and a resume context after a drop. | `openai_realtime` |
 | `save-interview-message` | `lib/realtime/interview-session.ts` | The only write path for `interview_messages`. Requires a running interview (90 s grace after completion), stores the room's per-turn timing under `metadata` (source = client) and dedupes by `clientId` (unique index). | — |
 | `complete-interview` | `interview-session.ts` on `closing` | Idempotent completion, then the server-side integrity analysis (`_shared/integrity.ts`: session facts, timing extremes, verbatim overlap → `interview_flags`, summary in `interviews.metadata.integrity_summary`), releases the `realtime` capacity slot, then KICKS `grading-worker` (the DB trigger already queued the job). `GRADING_LEGACY_SYNC=1` restores the old synchronous `generate-report` + `evaluate-answer` calls. | — (legacy path: `openai_realtime2`) |
@@ -26,8 +26,10 @@ provider, score, pipeline, rows, store-supabase, kick; tested under Node in
 `tests/`),
 `document-loader.ts`, `realtime-instructions.ts` (host prompt),
 `integrity-settings.ts` (per-assignment feature flags, mirrored in
-`lib/integrity/settings.ts`), `overlap.ts` (verbatim-overlap check, mirrored
-in `lib/integrity/overlap.ts`), `integrity.ts` (post-interview analysis),
+`lib/integrity/settings.ts`), `integrity-events.ts` (telemetry batch
+validation + dedupe, Node-tested from `tests/integrity/`), `overlap.ts`
+(verbatim-overlap check, mirrored in `lib/integrity/overlap.ts`),
+`integrity.ts` (post-interview analysis),
 `providers.ts` (mock providers, unused in production).
 
 ## Deploying
@@ -41,7 +43,7 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 | Slug | Deployed version | Matches repo? |
 | --- | --- | --- |
 | prepare-submission | v6 (2026-10-14) | yes — question pool + seeded selection, raw document text |
-| interview-control | v1 (2026-10-14) | yes |
+| interview-control | v2 (2026-10-16) | yes — event engine (event_id dedupe, open/close), camera_exemption, camera default `required` |
 | create-realtime-session | v15 (2026-10-14) | **no — repo adds the `realtime` admission check (grading engine v2); deploy after migration 20260515000001** |
 | save-interview-message | v5 (2026-10-14) | yes — status guard, timing metadata, clientId dedupe |
 | evaluate-answer | v4 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
@@ -67,6 +69,12 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 6. Rollback: `update grading_config set queue_enabled = false`, redeploy
    the previous function versions or set `GRADING_LEGACY_SYNC=1` on
    `complete-interview`.
+
+Note (2026-10-16): `_shared/integrity-settings.ts` changed (camera default
+`required`, `headPose`). Only `interview-control` v2 carries the new copy;
+`create-realtime-session`, `complete-interview` and `prepare-submission`
+still bundle the old one, which is harmless for them (they do not read
+`camera` / `headPose`) but means their next deploy picks up the change.
 
 History: on 2026-10-01 the deployed v12 of `create-realtime-session` and v5 of
 `generate-report` had drifted from the repo (condensed prompt, two extra scoring

@@ -121,6 +121,8 @@ export function StudentTile({
   muted,
   cameraStatus,
   cameraLabel,
+  trackingLabel,
+  trackingTone = "muted",
   videoRef,
 }: {
   eyebrow: ReactNode;
@@ -135,6 +137,9 @@ export function StudentTile({
   /** Omit when the camera is not part of this interview. */
   cameraStatus?: TileCameraStatus;
   cameraLabel?: string;
+  /** Short line under the self-view: "presence detection active" / "not available". */
+  trackingLabel?: string;
+  trackingTone?: "ok" | "muted" | "warn";
   videoRef?: (el: HTMLVideoElement | null) => void;
 }) {
   const ring = muted
@@ -184,6 +189,12 @@ export function StudentTile({
             <span>{initial}</span>
           </div>
         )}
+        {cameraStatus !== undefined && trackingLabel ? (
+          <div className="room-cam-tracking" data-tone={trackingTone} role="status">
+            <span className="room-cam-tracking-dot" aria-hidden />
+            {trackingLabel}
+          </div>
+        ) : null}
         <div className="room-student-name">{name}</div>
         <div className="room-student-status text-muted">{status}</div>
       </div>

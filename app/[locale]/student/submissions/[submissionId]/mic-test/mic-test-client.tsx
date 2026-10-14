@@ -31,6 +31,10 @@ import {
 } from "@/components/podtask/icons";
 import type { MicPermissionState } from "@/lib/student/status";
 import type { CameraMode } from "@/lib/integrity/settings";
+import { listVideoInputs, videoConstraints } from "@/lib/integrity/camera-monitor";
+import { PREFERRED_CAMERA_KEY } from "@/lib/integrity/preferences";
+import { CAMERA_EXEMPTION_REASONS, type CameraExemptionReason } from "@/lib/integrity/types";
+import { recordCameraExemption } from "@/lib/student/student-service";
 
 interface MicTestClientProps {
   submissionId: string;
@@ -41,6 +45,11 @@ interface MicTestClientProps {
 
 type RecorderPhase = "idle" | "recording" | "recorded";
 type CameraCheck = "idle" | "starting" | "on" | "denied" | "unavailable";
+/** Does a granted camera actually deliver moving frames? */
+type CameraSignal = "unknown" | "ok" | "none";
+type ExemptionState = "idle" | "saving" | "done" | "error";
+
+const FRAME_CHECK_MS = 3000;
 
 const MAX_RECORD_MS = 10_000;
 // RMS below this for the whole clip = nothing reached the mic.
@@ -67,6 +76,13 @@ export function MicTestClient({
   const router = useRouter();
   const [perm, setPerm] = useState<MicPermissionState>("permission_required");
   const [cam, setCam] = useState<CameraCheck>("idle");
+  const [camSignal, setCamSignal] = useState<CameraSignal>("unknown");
+  const [camDevices, setCamDevices] = useState<{ deviceId: string; label: string }[]>([]);
+  const [camDeviceId, setCamDeviceId] = useState<string | null>(null);
+  const [exemptionOpen, setExemptionOpen] = useState(false);
+  const [exemptionReason, setExemptionReason] = useState<CameraExemptionReason>("accessibility");
+  const [exemptionNote, setExemptionNote] = useState("");
+  const [exemptionState, setExemptionState] = useState<ExemptionState>("idle");
   const camStreamRef = useRef<MediaStream | null>(null);
   const camVideoRef = useRef<HTMLVideoElement | null>(null);
   const [phase, setPhase] = useState<RecorderPhase>("idle");
@@ -159,8 +175,10 @@ export function MicTestClient({
   }, [stopMeter]);
 
   // Camera check: a mirrored preview so the student sees what the camera
-  // sees. The frames stay in the browser; the room opens its own stream.
-  async function requestCamera() {
+  // sees, a device picker when there are several, and a frame check (a
+  // granted camera can still deliver no picture: covered lens, stuck
+  // driver). The frames stay in the browser; the room opens its own stream.
+  async function requestCamera(deviceId: string | null = camDeviceId) {
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
@@ -169,11 +187,25 @@ export function MicTestClient({
       return;
     }
     setCam("starting");
+    setCamSignal("unknown");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: "user" },
-        audio: false,
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints(deviceId),
+          audio: false,
+        });
+      } catch (err) {
+        // The remembered camera is gone: fall back to any front camera.
+        if (deviceId && err instanceof Error && err.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints(null),
+            audio: false,
+          });
+        } else {
+          throw err;
+        }
+      }
       camStreamRef.current?.getTracks().forEach((tk) => tk.stop());
       camStreamRef.current = stream;
       const el = camVideoRef.current;
@@ -182,10 +214,45 @@ export function MicTestClient({
         void el.play().catch(() => {});
       }
       setCam("on");
+      const activeId = stream.getVideoTracks()[0]?.getSettings().deviceId ?? deviceId ?? null;
+      setCamDeviceId(activeId);
+      try {
+        if (activeId) window.sessionStorage.setItem(PREFERRED_CAMERA_KEY, activeId);
+      } catch {
+        /* private mode */
+      }
+      setCamDevices(await listVideoInputs());
+      void checkFrames(stream, el);
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       setCam(name === "NotAllowedError" || name === "SecurityError" ? "denied" : "unavailable");
     }
+  }
+
+  async function checkFrames(stream: MediaStream, el: HTMLVideoElement | null) {
+    const started = performance.now();
+    const t0 = el?.currentTime ?? 0;
+    while (performance.now() - started < FRAME_CHECK_MS) {
+      await new Promise((r) => window.setTimeout(r, 250));
+      if (camStreamRef.current !== stream) return; // superseded
+      if (el && el.readyState >= 2 && el.videoWidth > 0 && el.currentTime > t0) {
+        setCamSignal("ok");
+        return;
+      }
+    }
+    if (camStreamRef.current === stream) setCamSignal("none");
+  }
+
+  async function submitExemption() {
+    if (exemptionState === "saving") return;
+    setExemptionState("saving");
+    let ok = false;
+    try {
+      ok = await recordCameraExemption(interviewId, exemptionReason, exemptionNote.trim() || null);
+    } catch {
+      ok = false;
+    }
+    setExemptionState(ok ? "done" : "error");
   }
 
   // Release everything on unmount (back link, cancel, navigation).
@@ -316,7 +383,7 @@ export function MicTestClient({
 
   const recording = phase === "recording";
   const recorded = phase === "recorded";
-  const cameraGate = cameraMode !== "required" || cam === "on";
+  const cameraGate = cameraMode !== "required" || cam === "on" || exemptionState === "done";
   const canStart = (recorded || unsupported) && cameraGate;
 
   return (
@@ -641,9 +708,14 @@ export function MicTestClient({
                   {t("micTest.cameraBody")}
                 </div>
               </div>
-              <Badge variant={cam === "on" ? "mint" : "neutral"} showDot={cam === "on"}>
+              <Badge
+                variant={cam === "on" ? (camSignal === "none" ? "amber" : "mint") : "neutral"}
+                showDot={cam === "on" && camSignal !== "none"}
+              >
                 {cam === "on"
-                  ? t("micTest.cameraOk")
+                  ? camSignal === "none"
+                    ? t("micTest.cameraNoSignal")
+                    : t("micTest.cameraOk")
                   : cam === "denied"
                     ? t("micTest.cameraDenied")
                     : cam === "unavailable"
@@ -678,11 +750,110 @@ export function MicTestClient({
               <div className="text-muted" style={{ fontSize: 13, flex: "1 1 220px", lineHeight: 1.5 }}>
                 {cam === "denied"
                   ? t("micTest.cameraDeniedBody")
-                  : cameraMode === "required"
-                    ? t("micTest.cameraRequired")
-                    : t("micTest.cameraOptional")}
+                  : cam === "on" && camSignal === "none"
+                    ? t("micTest.cameraNoSignalBody")
+                    : cam === "on"
+                      ? t("micTest.cameraKeepOn")
+                      : cameraMode === "required"
+                        ? t("micTest.cameraRequired")
+                        : t("micTest.cameraOptional")}
               </div>
             </div>
+            {cam === "on" && camDevices.length > 1 ? (
+              <div className="row" style={{ gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <label htmlFor="mic-cam-select" style={{ fontSize: 13, fontWeight: 700 }}>
+                  {t("micTest.cameraPick")}
+                </label>
+                <select
+                  id="mic-cam-select"
+                  className="mic-cam-select"
+                  value={camDeviceId ?? ""}
+                  onChange={(e) => void requestCamera(e.target.value || null)}
+                >
+                  {camDevices.map((d, i) => (
+                    <option key={d.deviceId} value={d.deviceId}>
+                      {d.label || t("micTest.cameraDefaultLabel", { n: i + 1 })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.55, margin: "14px 0 0" }}>
+              {t("micTest.cameraPrivacy")}
+            </p>
+            {cameraMode === "required" && cam !== "on" ? (
+              exemptionState === "done" ? (
+                <div className="mic-exemption" role="status">
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{t("micTest.exemptionDone")}</div>
+                  <div className="text-muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                    {t("micTest.exemptionDoneBody")}
+                  </div>
+                </div>
+              ) : exemptionOpen ? (
+                <div className="mic-exemption">
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{t("micTest.exemptionTitle")}</div>
+                  <div className="text-muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                    {t("micTest.exemptionBody")}
+                  </div>
+                  <label htmlFor="mic-exemption-reason" style={{ fontSize: 13, fontWeight: 700 }}>
+                    {t("micTest.exemptionReason")}
+                  </label>
+                  <select
+                    id="mic-exemption-reason"
+                    className="mic-cam-select"
+                    value={exemptionReason}
+                    onChange={(e) => setExemptionReason(e.target.value as CameraExemptionReason)}
+                  >
+                    {CAMERA_EXEMPTION_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {t(`micTest.exemption_${r}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <label htmlFor="mic-exemption-note" style={{ fontSize: 13, fontWeight: 700 }}>
+                    {t("micTest.exemptionNote")}
+                  </label>
+                  <textarea
+                    id="mic-exemption-note"
+                    maxLength={200}
+                    value={exemptionNote}
+                    onChange={(e) => setExemptionNote(e.target.value)}
+                  />
+                  {exemptionState === "error" ? (
+                    <div role="alert" style={{ fontSize: 13, color: "rgb(var(--pink-rose))", fontWeight: 600 }}>
+                      {t("micTest.exemptionError")}
+                    </div>
+                  ) : null}
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => void submitExemption()}
+                      disabled={exemptionState === "saving"}
+                    >
+                      {exemptionState === "saving" ? t("consent.saving") : t("micTest.exemptionSubmit")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setExemptionOpen(false)}
+                      disabled={exemptionState === "saving"}
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ marginTop: 12, padding: "6px 0", fontSize: 13, fontWeight: 700 }}
+                  onClick={() => setExemptionOpen(true)}
+                >
+                  {t("micTest.exemptionLink")}
+                </button>
+              )
+            ) : null}
           </div>
         ) : null}
 

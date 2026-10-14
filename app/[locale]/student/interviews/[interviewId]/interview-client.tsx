@@ -83,9 +83,14 @@ import {
 } from "@/lib/student/student-service";
 import type { IntegritySettings } from "@/lib/integrity/settings";
 import type { IntegrityClientEvent } from "@/lib/integrity/types";
-import { IntegrityEventQueue } from "@/lib/integrity/event-queue";
+import { IntegrityEventQueue, type IntegritySyncState } from "@/lib/integrity/event-queue";
 import { ActivityMonitor } from "@/lib/integrity/activity-monitor";
-import { CameraMonitor, type CameraStatus } from "@/lib/integrity/camera-monitor";
+import {
+  CameraMonitor,
+  type CameraStatus,
+  type TrackingStatus,
+} from "@/lib/integrity/camera-monitor";
+import { PREFERRED_CAMERA_KEY } from "@/lib/integrity/preferences";
 import {
   DocumentIndex,
   computeOverlap,
@@ -246,6 +251,12 @@ export function InterviewRoomClient({
   }, [paused]);
   const [adapterError, setAdapterError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
+  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
+  // Exam-integrity UI state: the live counter in the badge, the sync dot and
+  // the gentle "you left the screen" notice.
+  const [exitCount, setExitCount] = useState(0);
+  const [syncState, setSyncState] = useState<IntegritySyncState>("synced");
+  const [returnNotice, setReturnNotice] = useState<{ ordinal: number; durationMs: number } | null>(null);
   const [showResumed, setShowResumed] = useState(resume.lastQuestionIndex >= 0);
 
   const adapterMode: InterviewAdapterMode =
@@ -432,9 +443,14 @@ export function InterviewRoomClient({
   // only when the assignment enables it. Every event is client telemetry
   // and is labelled as such on the lecturer's side.
   useEffect(() => {
-    if (adapterMode !== "openai") return;
-    const queue = new IntegrityEventQueue((events, opts) =>
-      recordIntegrityEvents(interviewId, events, opts),
+    // Mock rooms run the same monitors (the badge, counter and notice are
+    // real); `recordIntegrityEvents` stores nothing for non-UUID ids.
+    const queue = new IntegrityEventQueue(
+      (events, opts) => recordIntegrityEvents(interviewId, events, opts),
+      {
+        storageKey: `podtask.integrity.${interviewId}`,
+        onSync: (state) => setSyncState(state),
+      },
     );
     eventQueueRef.current = queue;
     let activity: ActivityMonitor | null = null;
@@ -443,6 +459,10 @@ export function InterviewRoomClient({
         onEvent: (event) => queue.push(event),
         getPlanQuestionId: planQuestionIdNow,
         trackFullscreen: integrity.fullscreen,
+        onReturn: (info) => {
+          setExitCount(info.ordinal);
+          setReturnNotice(info);
+        },
       });
       activity.start();
       activityRef.current = activity;
@@ -467,11 +487,20 @@ export function InterviewRoomClient({
   // Camera: a self-view plus on-device face presence. Nothing is uploaded.
   useEffect(() => {
     if (integrity.camera === "off") return;
+    let deviceId: string | null = null;
+    try {
+      deviceId = window.sessionStorage.getItem(PREFERRED_CAMERA_KEY);
+    } catch {
+      /* private mode */
+    }
     const camera = new CameraMonitor({
       onStatus: setCameraStatus,
       onEvent: (event) => eventQueueRef.current?.push(event),
+      onTracking: (status) => setTrackingStatus(status),
       getPlanQuestionId: planQuestionIdNow,
       detectFaces: true,
+      headPose: integrity.headPose,
+      deviceId,
     });
     cameraRef.current = camera;
     void camera.start();
@@ -479,7 +508,7 @@ export function InterviewRoomClient({
       camera.stop();
       cameraRef.current = null;
     };
-  }, [integrity.camera, planQuestionIdNow]);
+  }, [integrity.camera, integrity.headPose, planQuestionIdNow]);
 
   // The submitted text, for the live "in your own words" check.
   useEffect(() => {
@@ -1353,6 +1382,29 @@ export function InterviewRoomClient({
     return () => window.clearTimeout(id);
   }, [showResumed]);
 
+  // The "you left the screen" notice: calm, informative, and gone on its own.
+  useEffect(() => {
+    if (!returnNotice) return;
+    const id = window.setTimeout(() => setReturnNotice(null), 9000);
+    return () => window.clearTimeout(id);
+  }, [returnNotice]);
+
+  const monitoringOn = integrity.activityMonitoring || integrity.camera !== "off";
+  const trackingLabel =
+    integrity.camera === "off"
+      ? undefined
+      : cameraStatus !== "on"
+        ? undefined
+        : trackingStatus === "on"
+          ? t("interview.trackingOn")
+          : trackingStatus === "loading"
+            ? t("interview.trackingLoading")
+            : trackingStatus === "unavailable"
+              ? t("interview.trackingUnavailable")
+              : undefined;
+  const trackingTone: "ok" | "muted" | "warn" =
+    trackingStatus === "on" ? "ok" : trackingStatus === "unavailable" ? "warn" : "muted";
+
   // ---- Section: timers + keyboard shortcuts ----
 
   const closingOrDone =
@@ -1604,6 +1656,21 @@ export function InterviewRoomClient({
               {t("interview.resumedChip")}
             </Badge>
           ) : null}
+          {monitoringOn ? (
+            <Badge
+              variant={exitCount >= 3 ? "amber" : "mint"}
+              className="room-monitor-badge"
+            >
+              <span className="room-monitor-sync" data-sync={syncState} aria-hidden />
+              {t("interview.monitorActive")}
+              {exitCount > 0 ? (
+                <span className="room-monitor-count">
+                  {t("interview.monitorExits", { n: exitCount })}
+                </span>
+              ) : null}
+              <span className="sr-only">{t(`interview.sync_${syncState}`)}</span>
+            </Badge>
+          ) : null}
           <Badge variant="pink" className="room-rec">
             <span
               className="dot"
@@ -1624,6 +1691,42 @@ export function InterviewRoomClient({
           </button>
         </div>
       </header>
+
+      {/* "You left the exam screen" notice: recorded, not accusatory. */}
+      <AnimatePresence>
+        {returnNotice ? (
+          <motion.div
+            key={`return-${returnNotice.ordinal}`}
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
+            className="room-return-notice"
+            data-repeat={returnNotice.ordinal >= 3 ? "true" : undefined}
+          >
+            <div style={{ flex: "1 1 240px" }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>
+                {t(returnNotice.ordinal >= 3 ? "interview.returnNoticeRepeatTitle" : "interview.returnNoticeTitle")}
+              </div>
+              <div style={{ fontSize: 13, marginTop: 2, lineHeight: 1.5 }}>
+                {t(returnNotice.ordinal >= 3 ? "interview.returnNoticeRepeatBody" : "interview.returnNoticeBody", {
+                  n: returnNotice.ordinal,
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "6px 12px", fontSize: 12 }}
+              onClick={() => setReturnNotice(null)}
+            >
+              {t("interview.returnNoticeDismiss")}
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <div className="room-main">
         <div className="room-grid">
@@ -1734,6 +1837,8 @@ export function InterviewRoomClient({
               muted={muted}
               cameraStatus={integrity.camera === "off" ? undefined : cameraStatus}
               cameraLabel={t("interview.cameraOn")}
+              trackingLabel={trackingLabel}
+              trackingTone={trackingTone}
               videoRef={attachCameraVideo}
             />
             {integrity.camera !== "off" &&
@@ -1749,7 +1854,9 @@ export function InterviewRoomClient({
                       : t("interview.cameraOff")}
                 </div>
                 <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  {t("interview.cameraNoticeBody")}
+                  {integrity.camera === "required"
+                    ? t("interview.cameraRequiredBody")
+                    : t("interview.cameraNoticeBody")}
                 </div>
                 <button
                   type="button"

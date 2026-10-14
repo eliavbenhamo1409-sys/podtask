@@ -1,12 +1,16 @@
 import { getTranslations } from "next-intl/server";
 import { Chip } from "@/components/podtask/chip";
 import type { IntegritySettings } from "@/lib/integrity/settings";
-import type { ReportEvent, ReportFlag } from "@/lib/lecturer/types";
+import type { ReportEvent, ReportFlag, ReportMessage } from "@/lib/lecturer/types";
+import { ExamIntegrity } from "./exam-integrity";
 
 interface IntegritySignalsProps {
   flags: ReportFlag[];
   events: ReportEvent[];
   questions: { id: string; topic: string }[];
+  /** For the Exam Integrity timeline: where each question started. */
+  messages: ReportMessage[];
+  interview: { startedAt: string | null; completedAt: string | null };
   summary: Record<string, unknown> | null;
   integrity: IntegritySettings;
   isGuest: boolean;
@@ -28,28 +32,6 @@ const KNOWN_CATEGORIES = new Set([
   "other",
 ]);
 
-const KNOWN_EVENTS = new Set([
-  "visibility_hidden",
-  "window_blur",
-  "fullscreen_exit",
-  "fullscreen_enter",
-  "page_hidden",
-  "offline",
-  "camera_started",
-  "camera_denied",
-  "camera_unavailable",
-  "camera_off",
-  "camera_reconnected",
-  "face_missing",
-  "multiple_faces",
-  "silence_nudge",
-  "own_words_prompt",
-  "mic_muted",
-  "disconnect",
-  "reconnect",
-  "session_resumed",
-]);
-
 /**
  * A flag's display level. "strong" needs a high-confidence item AND at
  * least two independent sources agreeing somewhere in the interview; a
@@ -61,8 +43,15 @@ function levelOf(flag: ReportFlag, sources: number): "none" | "notable" | "stron
   return "notable";
 }
 
-function seconds(ms: number | null): number {
-  return Math.round((ms ?? 0) / 1000);
+/** The localized limitation note for a flag, by where it came from. */
+function limitationKey(flag: ReportFlag): string {
+  if (flag.source === "host_tool") return "lecturer.limit_host";
+  if (flag.source === "server_timing") return "lecturer.limit_timing";
+  if (flag.source === "server_session") return "lecturer.limit_session";
+  const ev = (flag.evidence[0] ?? null) as Record<string, unknown> | null;
+  return ev?.document_source === "llm_markdown"
+    ? "lecturer.limit_overlap_pdf"
+    : "lecturer.limit_overlap_raw";
 }
 
 /**
@@ -74,6 +63,8 @@ export async function IntegritySignals({
   flags,
   events,
   questions,
+  messages,
+  interview,
   summary,
   integrity,
   isGuest,
@@ -93,8 +84,15 @@ export async function IntegritySignals({
     if (e.planQuestionId) agg.questions.add(e.planQuestionId);
     byKind.set(e.kind, agg);
   }
-  const contextKinds = ["camera_started", "camera_reconnected", "fullscreen_enter", "mic_muted", "silence_nudge", "own_words_prompt", "reconnect", "session_resumed"];
-  const attentionKinds = ["visibility_hidden", "window_blur", "fullscreen_exit", "page_hidden", "offline", "camera_denied", "camera_unavailable", "camera_off", "face_missing", "multiple_faces", "disconnect"];
+  const attentionKinds = ["visibility_hidden", "window_blur", "fullscreen_exit", "page_hidden", "offline", "camera_denied", "camera_unavailable", "camera_off", "camera_exemption", "face_missing", "multiple_faces", "head_away", "tracking_unavailable", "disconnect"];
+  // First host line per planned question = where that question started.
+  const questionStarts: { id: string; at: string }[] = [];
+  const seenQ = new Set<string>();
+  for (const m of messages) {
+    if (m.speaker !== "ai_host" || !m.planQuestionId || seenQ.has(m.planQuestionId)) continue;
+    seenQ.add(m.planQuestionId);
+    questionStarts.push({ id: m.planQuestionId, at: m.createdAt });
+  }
 
   const sessionsMinted = typeof summary?.sessions_minted === "number" ? summary.sessions_minted : null;
   const medianLatency = typeof summary?.median_latency_ms === "number" ? summary.median_latency_ms : null;
@@ -159,11 +157,9 @@ export async function IntegritySignals({
                       {ev.passage}
                     </div>
                   ) : null}
-                  {f.limitations ? (
-                    <div className="text-muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
-                      {t("lecturer.limitationsLabel")}: {f.limitations}
-                    </div>
-                  ) : null}
+                  <div className="text-muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
+                    {t("lecturer.limitationsLabel")}: {t(limitationKey(f))}
+                  </div>
                 </div>
               </div>
             );
@@ -171,29 +167,15 @@ export async function IntegritySignals({
         </div>
       ) : null}
 
-      {attentionKinds.some((k) => byKind.has(k)) || contextKinds.some((k) => byKind.has(k)) ? (
-        <div className="card" style={{ padding: 20, marginTop: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>{t("lecturer.eventsTitle")}</div>
-          <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{t("lecturer.eventsNote")}</div>
-          <ul className="consent-list" style={{ marginTop: 10 }}>
-            {[...attentionKinds, ...contextKinds]
-              .filter((k) => byKind.has(k))
-              .map((kind) => {
-                const agg = byKind.get(kind)!;
-                const key = KNOWN_EVENTS.has(kind) ? kind : "other";
-                const qs = [...agg.questions].map((id) => qLabel(id)).filter(Boolean).join(", ");
-                return (
-                  <li key={kind}>
-                    <span>
-                      <strong>{t(`lecturer.ev_${key}`)}</strong>: {t("lecturer.timesN", { n: agg.count })}
-                      {agg.totalMs > 0 ? `, ${t("lecturer.totalSeconds", { seconds: seconds(agg.totalMs) })}` : ""}
-                      {qs ? ` (${qs})` : ""}
-                    </span>
-                  </li>
-                );
-              })}
-          </ul>
-        </div>
+      {/* Exam Integrity: tab exits, camera presence, technical trouble, timeline. */}
+      {integrity.camera !== "off" || integrity.activityMonitoring || events.length > 0 ? (
+        <ExamIntegrity
+          events={events}
+          questions={questions}
+          questionStarts={questionStarts}
+          interview={interview}
+          integrity={integrity}
+        />
       ) : null}
     </div>
   );
