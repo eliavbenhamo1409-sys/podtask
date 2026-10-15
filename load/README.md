@@ -75,6 +75,12 @@ All 7,200 turns were stored exactly once (7,200 distinct client ids), all
 200 reports were written once with no retry, and the completions (spread
 over 86 s) drained in 195 s.
 
+Realtime admission (`mint`, 30 in-progress interviews within 10 s, pool
+`realtime` = 12, no live session at the time): 12 admitted (a real client
+secret minted, no audio sent), 18 refused with `503 at_capacity`,
+`retryAfterSeconds` 60, one `realtime.admission_refused` event each.
+Latency p50 2.2 s, p95 3.3 s. The 12 slots were released right after.
+
 Real models (gpt-4.1 evaluate / verify, gpt-4.1-mini narrative), 4
 interviews: completion to report 16 s p50, 21 s max; ≈ $0.043 per
 interview without a second pass, ≈ $0.061 with one. 200 interviews ≈ $9-12

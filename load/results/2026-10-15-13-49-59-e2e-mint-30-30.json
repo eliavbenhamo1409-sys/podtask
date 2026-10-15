@@ -1,0 +1,18 @@
+{
+  "mode": "mint",
+  "label": "mint-30",
+  "n": 30,
+  "burstSec": 10,
+  "elapsedSec": 12,
+  "outcomes": {
+    "200:ok": 12,
+    "503:at_capacity": 18
+  },
+  "latencyMs": {
+    "n": 30,
+    "p50": 2226,
+    "p95": 3298,
+    "p99": 3513,
+    "max": 3513
+  }
+}
