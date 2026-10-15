@@ -3154,6 +3154,59 @@
     background: #f59e0b;
   }
 
+  /* Live warning sign on the self-view (lib/integrity/live-warning.ts). */
+  .room-cam-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0);
+    transition: box-shadow 0.3s ease;
+  }
+  .room-cam-wrap[data-warn="true"]::after {
+    box-shadow: inset 0 0 0 3px #f59e0b;
+  }
+  .room-cam-warn {
+    position: absolute;
+    inset-inline: 8px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    background: rgba(255, 251, 235, 0.96);
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.3;
+    box-shadow: 0 6px 16px rgba(146, 64, 14, 0.22);
+    animation: room-cam-warn-in 0.28s ease-out both;
+  }
+  .room-cam-warn svg {
+    flex: none;
+    color: #d97706;
+  }
+  @keyframes room-cam-warn-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .room-cam-debug {
+    margin: -6px 0 8px;
+    max-width: 240px;
+    font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: rgb(var(--muted));
+    text-align: center;
+    white-space: pre-wrap;
+  }
+
   .consent-notice {
     margin-top: 20px;
     padding: 18px 20px;

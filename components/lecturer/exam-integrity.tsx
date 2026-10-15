@@ -37,6 +37,7 @@ const KNOWN_EVENTS = new Set([
   "multiple_faces",
   "head_away",
   "tracking_unavailable",
+  "integrity_warning",
   "silence_nudge",
   "own_words_prompt",
   "mic_muted",
@@ -99,6 +100,12 @@ export async function ExamIntegrity({
         return p.axis === "pitch" ? t("lecturer.examAxisPitch") : t("lecturer.examAxisYaw");
       case "multiple_faces":
         return typeof p.faces === "number" ? t("lecturer.examFacesN", { n: p.faces }) : null;
+      case "integrity_warning": {
+        const reasons = ["look_away", "glances", "another_person", "face_missing"];
+        if (typeof p.reason !== "string" || !reasons.includes(p.reason)) return null;
+        const reason = t(`lecturer.warn_${p.reason}`);
+        return p.cue === "head" || p.cue === "eyes" ? `${reason} (${t(`lecturer.examCue_${p.cue}`)})` : reason;
+      }
       case "tracking_unavailable":
       case "camera_off":
       case "camera_unavailable":

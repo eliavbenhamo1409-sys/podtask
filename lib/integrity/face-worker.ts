@@ -2,13 +2,15 @@
  * Web Worker: runs the MediaPipe Face Landmarker off the UI thread.
  *
  * The room posts one downscaled `ImageBitmap` at a time (1–2 per second);
- * the worker answers with THREE NUMBERS: how many faces, and the yaw / pitch
- * of the first face when exactly one is tracked. Landmarks, blendshapes and
- * pixels never leave this worker, nothing is stored, and no identity model
- * runs. See `camera-monitor.ts` for the main-thread side and the fallback.
+ * the worker answers with a FEW NUMBERS: how many faces, and, when exactly
+ * one is tracked, its yaw / pitch and a coarse eye direction (from three
+ * blendshape sums, see `live-warning.ts`). Landmarks, blendshapes and pixels
+ * never leave this worker, nothing is stored, and no identity model runs.
+ * See `camera-monitor.ts` for the main-thread side and the fallback.
  */
 import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 import { headPoseFromMatrix } from "./head-pose";
+import { eyeGazeFromBlendshapes } from "./live-warning";
 
 export interface FaceWorkerInit {
   type: "init";
@@ -28,7 +30,17 @@ export type FaceWorkerRequest = FaceWorkerInit | FaceWorkerFrame;
 
 export type FaceWorkerResponse =
   | { type: "ready" }
-  | { type: "result"; ts: number; faces: number; yaw: number | null; pitch: number | null; inferenceMs: number }
+  | {
+      type: "result";
+      ts: number;
+      faces: number;
+      yaw: number | null;
+      pitch: number | null;
+      eyeH: number | null;
+      eyeV: number | null;
+      blink: number | null;
+      inferenceMs: number;
+    }
   | { type: "error"; stage: "init" | "frame"; message: string };
 
 const ctx = self as unknown as {
@@ -47,7 +59,8 @@ async function init(msg: FaceWorkerInit): Promise<void> {
     baseOptions: { modelAssetPath: msg.modelPath, delegate: "CPU" },
     runningMode: "VIDEO",
     numFaces: msg.numFaces,
-    outputFaceBlendshapes: false,
+    // Head pose and eye direction travel together (the `head_pose` setting).
+    outputFaceBlendshapes: msg.headPose,
     outputFacialTransformationMatrixes: msg.headPose,
     minFaceDetectionConfidence: 0.5,
     minFacePresenceConfidence: 0.5,
@@ -66,12 +79,21 @@ function analyze(msg: FaceWorkerFrame): FaceWorkerResponse {
   const faces = result.faceLandmarks.length;
   let yaw: number | null = null;
   let pitch: number | null = null;
+  let eyeH: number | null = null;
+  let eyeV: number | null = null;
+  let blink: number | null = null;
   if (wantPose && faces === 1) {
     const m = result.facialTransformationMatrixes?.[0];
     const pose = m ? headPoseFromMatrix(m.data) : null;
     if (pose) {
       yaw = pose.yawDeg;
       pitch = pose.pitchDeg;
+    }
+    const eyes = eyeGazeFromBlendshapes(result.faceBlendshapes?.[0]?.categories);
+    if (eyes) {
+      eyeH = eyes.h;
+      eyeV = eyes.v;
+      blink = eyes.blink;
     }
   }
   return {
@@ -80,6 +102,9 @@ function analyze(msg: FaceWorkerFrame): FaceWorkerResponse {
     faces,
     yaw,
     pitch,
+    eyeH,
+    eyeV,
+    blink,
     inferenceMs: Math.round(performance.now() - started),
   };
 }

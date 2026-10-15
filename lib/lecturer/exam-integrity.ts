@@ -37,7 +37,7 @@ const TECHNICAL_KINDS = new Set([
   "fullscreen_exit",
 ]);
 
-const CAMERA_LANE_KINDS = new Set(["face_missing", "multiple_faces", "head_away"]);
+const CAMERA_LANE_KINDS = new Set(["face_missing", "multiple_faces", "head_away", "integrity_warning"]);
 const TAB_LANE_KINDS = new Set(["visibility_hidden", "window_blur", "tab_returned", "mic_muted", "silence_nudge", "own_words_prompt"]);
 
 /** Rows that are only bookkeeping for another row (never listed). */
@@ -69,6 +69,9 @@ export function classifyEvent(e: Pick<ReportEvent, "kind" | "durationMs" | "ende
     case "head_away":
       return open || dur >= REVIEW_THRESHOLDS_MS.head_away ? "review" : "monitoring";
     case "multiple_faces":
+      return "review";
+    // The sign on the student's self-view only appears on reasonable suspicion.
+    case "integrity_warning":
       return "review";
     default:
       return "monitoring";

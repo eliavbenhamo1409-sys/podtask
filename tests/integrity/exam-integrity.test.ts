@@ -29,6 +29,7 @@ test("classification: technical vs monitoring vs review", () => {
   assert.equal(classifyEvent(ev("multiple_faces", 0, 2500)), "review");
   assert.equal(classifyEvent(ev("head_away", 0, 5000)), "monitoring");
   assert.equal(classifyEvent(ev("window_blur", 0, 9000)), "monitoring");
+  assert.equal(classifyEvent(ev("integrity_warning", 0, null, { payload: { reason: "look_away", cue: "eyes" } })), "review");
 });
 
 test("the model aggregates counts, durations, camera state and the exemption", () => {

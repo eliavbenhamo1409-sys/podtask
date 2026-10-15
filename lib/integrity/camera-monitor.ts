@@ -4,6 +4,8 @@ import type { IntegrityClientEvent } from "./types";
 import type { HeadPose } from "./head-pose";
 import { headPoseFromMatrix } from "./head-pose";
 import { PresenceTracker } from "./presence-tracker";
+import type { EyeGaze, LiveWarning, LiveWarningDebug, LiveWarningEvent } from "./live-warning";
+import { LiveWarningMonitor, eyeGazeFromBlendshapes } from "./live-warning";
 import type { FaceWorkerRequest, FaceWorkerResponse } from "./face-worker";
 
 export type CameraStatus =
@@ -22,6 +24,10 @@ export interface CameraMonitorOptions {
   onEvent: (event: IntegrityClientEvent) => void;
   getPlanQuestionId: () => string | null;
   onTracking?: (status: TrackingStatus, detail: string | null) => void;
+  /** The warning sign on the self-view changed (null = gone). See `live-warning.ts`. */
+  onWarning?: (warning: LiveWarning | null) => void;
+  /** Per-frame readings behind the warning; only for tuning (`?proctorDebug=1`). */
+  onDebug?: (debug: LiveWarningDebug) => void;
   /** Run the on-device face presence detector (MediaPipe). */
   detectFaces?: boolean;
   /** Also estimate head orientation (needs the landmarker's transformation matrix). */
@@ -61,6 +67,7 @@ const MAIN_BANDS: [number, number][] = [[150, 1000], [300, 1500], [Infinity, 250
 interface FrameResult {
   faces: number;
   pose: HeadPose | null;
+  eyes: EyeGaze | null;
   inferenceMs: number;
 }
 
@@ -96,12 +103,16 @@ export function videoConstraints(deviceId?: string | null): MediaTrackConstraint
  * Keeps the student's camera on during the interview and runs a small
  * on-device face landmarker, in a Web Worker when possible:
  *   face_missing / multiple_faces / head_away   via PresenceTracker
+ *   integrity_warning      a warning sign was shown on the self-view
+ *                          (LiveWarningMonitor: sustained or repeated looks
+ *                          away, another person, no face)
  *   tracking_unavailable   the detector cannot run (no frames, muted track,
  *                          model failure): distinct from "no face"
  *   camera_off             the track ended or went silent (unplugged,
  *                          permission revoked, taken by another app)
  * No frame is ever uploaded or stored; the detector only yields a face
- * count and two angles. No identity, emotion or gaze analysis is performed.
+ * count, two head angles and a coarse eye direction. No identity or emotion
+ * analysis is performed.
  */
 export class CameraMonitor {
   private stream: MediaStream | null = null;
@@ -109,6 +120,7 @@ export class CameraMonitor {
   private video: HTMLVideoElement | null = null;
   private analyzer: Analyzer | null = null;
   private presence: PresenceTracker | null = null;
+  private warnings: LiveWarningMonitor | null = null;
   private timer: number | null = null;
   private mutedTimer: number | null = null;
   private status: CameraStatus = "idle";
@@ -207,6 +219,7 @@ export class CameraMonitor {
         faceMissingAfterMs: this.opts.faceMissingAfterMs,
         multipleFacesAfterMs: this.opts.multipleFacesAfterMs,
       });
+      this.warnings ??= new LiveWarningMonitor();
       if (this.analyzer) {
         this.setTracking("on", null);
         this.schedule();
@@ -221,6 +234,7 @@ export class CameraMonitor {
     this.stopped = true;
     const now = Date.now();
     this.presence?.flush(now);
+    this.dropWarning();
     this.clearTimers();
     try {
       this.analyzer?.close();
@@ -312,10 +326,41 @@ export class CameraMonitor {
     }
   }
 
+  /** Presence can no longer be observed: close what is open and take the sign down. */
+  private markUnavailable(reason: string, at: number): void {
+    this.presence?.markUnavailable(reason, at);
+    this.dropWarning();
+  }
+
+  private dropWarning(): void {
+    if (this.warnings?.reset()) this.notifyWarning(null);
+  }
+
+  private notifyWarning(warning: LiveWarning | null): void {
+    try {
+      this.opts.onWarning?.(warning ? { ...warning } : null);
+    } catch {
+      /* noop */
+    }
+  }
+
+  private emitWarning(event: LiveWarningEvent): void {
+    const payload: Record<string, unknown> = { reason: event.reason };
+    if (event.cue) payload.cue = event.cue;
+    if (event.awayMs !== null) payload.away_ms = event.awayMs;
+    if (event.episodes !== null) payload.episodes = event.episodes;
+    this.emit({
+      kind: "integrity_warning",
+      startedAt: new Date(event.at).toISOString(),
+      planQuestionId: this.opts.getPlanQuestionId(),
+      payload,
+    });
+  }
+
   private onTrackEnded = (): void => {
     if (this.stopped) return;
     const now = Date.now();
-    this.presence?.markUnavailable("camera_ended", now);
+    this.markUnavailable("camera_ended", now);
     this.clearTimers();
     this.setStatus("off", "camera_off", { reason: "ended" });
     this.setTracking("unavailable", "camera_ended");
@@ -328,7 +373,7 @@ export class CameraMonitor {
     this.mutedTimer = window.setTimeout(() => {
       this.mutedTimer = null;
       if (this.stopped || !this.track?.muted) return;
-      this.presence?.markUnavailable("camera_muted", Date.now());
+      this.markUnavailable("camera_muted", Date.now());
       this.setStatus("off", "camera_off", { reason: "muted" });
       this.setTracking("unavailable", "camera_muted");
     }, MUTED_AFTER_MS);
@@ -396,7 +441,7 @@ export class CameraMonitor {
       // The camera still works as a plain self-view; presence events are
       // simply not produced, and the report says so.
       const reason = lastError === "detector_timeout" ? "detector_timeout" : "detector_failed";
-      this.presence?.markUnavailable(reason, Date.now());
+      this.markUnavailable(reason, Date.now());
       this.setTracking("unavailable", reason);
       return;
     }
@@ -416,7 +461,7 @@ export class CameraMonitor {
     }
     this.analyzer = null;
     this.busy = false;
-    this.presence?.markUnavailable("worker_crashed", Date.now());
+    this.markUnavailable("worker_crashed", Date.now());
     this.setTracking("loading", message);
     // One more attempt, on the main thread.
     void this.loadAnalyzer();
@@ -449,11 +494,12 @@ export class CameraMonitor {
     // Frames do not advance in a hidden tab; the activity monitor records that.
     if (document.visibilityState === "hidden") {
       this.lastAdvanceAt = now;
+      this.dropWarning();
       return;
     }
     if (video.readyState < 2 || video.videoWidth === 0) {
       if (now - this.lastAdvanceAt > NO_FRAMES_AFTER_MS) {
-        presence.markUnavailable("no_frames", now);
+        this.markUnavailable("no_frames", now);
         this.setTracking("unavailable", "no_frames");
       }
       return;
@@ -463,7 +509,7 @@ export class CameraMonitor {
       this.lastCurrentTime = video.currentTime;
       this.lastAdvanceAt = now;
     } else if (now - this.lastAdvanceAt > NO_FRAMES_AFTER_MS) {
-      presence.markUnavailable("no_frames", now);
+      this.markUnavailable("no_frames", now);
       this.setTracking("unavailable", "no_frames");
       return;
     }
@@ -480,14 +526,30 @@ export class CameraMonitor {
       if (analyzer.engine === "worker") {
         this.onWorkerCrash(message);
       } else {
-        presence.markUnavailable("detector_failed", Date.now());
+        this.markUnavailable("detector_failed", Date.now());
         this.setTracking("unavailable", "detector_failed");
       }
       return;
     }
     this.busy = false;
     if (this.stopped) return;
-    presence.observe({ at: Date.now(), faces: result.faces, pose: result.pose });
+    const at = Date.now();
+    presence.observe({ at, faces: result.faces, pose: result.pose });
+    const warnings = this.warnings;
+    if (warnings) {
+      const { faceMissing, multipleFaces } = presence.state;
+      const out = warnings.observe({ at, faces: result.faces, pose: result.pose, eyes: result.eyes, faceMissing, multipleFaces });
+      if (out.event) this.emitWarning(out.event);
+      if (out.changed) this.notifyWarning(warnings.warning);
+      const debug = warnings.debug;
+      if (debug && this.opts.onDebug) {
+        try {
+          this.opts.onDebug(debug);
+        } catch {
+          /* noop */
+        }
+      }
+    }
     if (this.tracking !== "on") this.setTracking("on", analyzer.engine);
     this.adapt(result.inferenceMs, analyzer.engine);
   }
@@ -593,6 +655,10 @@ function createWorkerAnalyzer(
             msg.yaw !== null && msg.pitch !== null
               ? { yawDeg: msg.yaw, pitchDeg: msg.pitch, rollDeg: 0 }
               : null,
+          eyes:
+            msg.eyeH !== null && msg.eyeV !== null
+              ? { h: msg.eyeH, v: msg.eyeV, blink: msg.blink ?? 0 }
+              : null,
           inferenceMs: msg.inferenceMs,
         });
         return;
@@ -625,7 +691,7 @@ async function createMainThreadAnalyzer(cfg: AnalyzerConfig): Promise<Analyzer> 
     baseOptions: { modelAssetPath: cfg.modelPath, delegate: "CPU" },
     runningMode: "VIDEO",
     numFaces: 2,
-    outputFaceBlendshapes: false,
+    outputFaceBlendshapes: cfg.headPose,
     outputFacialTransformationMatrixes: cfg.headPose,
     minFaceDetectionConfidence: 0.5,
     minFacePresenceConfidence: 0.5,
@@ -638,11 +704,13 @@ async function createMainThreadAnalyzer(cfg: AnalyzerConfig): Promise<Analyzer> 
       const result = landmarker.detectForVideo(video, ts);
       const faces = result.faceLandmarks.length;
       let pose: HeadPose | null = null;
+      let eyes: EyeGaze | null = null;
       if (cfg.headPose && faces === 1) {
         const m = result.facialTransformationMatrixes?.[0];
         pose = m ? headPoseFromMatrix(m.data) : null;
+        eyes = eyeGazeFromBlendshapes(result.faceBlendshapes?.[0]?.categories);
       }
-      return { faces, pose, inferenceMs: Math.round(performance.now() - started) };
+      return { faces, pose, eyes, inferenceMs: Math.round(performance.now() - started) };
     },
     close() {
       landmarker.close();

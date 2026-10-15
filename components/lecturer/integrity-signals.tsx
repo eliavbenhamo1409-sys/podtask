@@ -84,7 +84,7 @@ export async function IntegritySignals({
     if (e.planQuestionId) agg.questions.add(e.planQuestionId);
     byKind.set(e.kind, agg);
   }
-  const attentionKinds = ["visibility_hidden", "window_blur", "fullscreen_exit", "page_hidden", "offline", "camera_denied", "camera_unavailable", "camera_off", "camera_exemption", "face_missing", "multiple_faces", "head_away", "tracking_unavailable", "disconnect"];
+  const attentionKinds = ["visibility_hidden", "window_blur", "fullscreen_exit", "page_hidden", "offline", "camera_denied", "camera_unavailable", "camera_off", "camera_exemption", "face_missing", "multiple_faces", "head_away", "integrity_warning", "tracking_unavailable", "disconnect"];
   // First host line per planned question = where that question started.
   const questionStarts: { id: string; at: string }[] = [];
   const seenQ = new Set<string>();

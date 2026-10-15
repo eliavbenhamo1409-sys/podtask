@@ -92,6 +92,11 @@ import {
 } from "@/lib/integrity/camera-monitor";
 import { PREFERRED_CAMERA_KEY } from "@/lib/integrity/preferences";
 import {
+  formatLiveWarningDebug,
+  type LiveWarning,
+  type LiveWarningDebug,
+} from "@/lib/integrity/live-warning";
+import {
   DocumentIndex,
   computeOverlap,
   isSignificantOverlap,
@@ -252,6 +257,10 @@ export function InterviewRoomClient({
   const [adapterError, setAdapterError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
+  // The warning sign on the self-view, and (with ?proctorDebug=1) the raw
+  // detector readings behind it, for tuning the thresholds.
+  const [liveWarning, setLiveWarning] = useState<LiveWarning | null>(null);
+  const [proctorDebug, setProctorDebug] = useState<LiveWarningDebug | null>(null);
   // Exam-integrity UI state: the live counter in the badge, the sync dot and
   // the gentle "you left the screen" notice.
   const [exitCount, setExitCount] = useState(0);
@@ -493,10 +502,13 @@ export function InterviewRoomClient({
     } catch {
       /* private mode */
     }
+    const debug = new URLSearchParams(window.location.search).has("proctorDebug");
     const camera = new CameraMonitor({
       onStatus: setCameraStatus,
       onEvent: (event) => eventQueueRef.current?.push(event),
       onTracking: (status) => setTrackingStatus(status),
+      onWarning: setLiveWarning,
+      onDebug: debug ? setProctorDebug : undefined,
       getPlanQuestionId: planQuestionIdNow,
       detectFaces: true,
       headPose: integrity.headPose,
@@ -507,6 +519,7 @@ export function InterviewRoomClient({
     return () => {
       camera.stop();
       cameraRef.current = null;
+      setLiveWarning(null);
     };
   }, [integrity.camera, integrity.headPose, planQuestionIdNow]);
 
@@ -1839,6 +1852,8 @@ export function InterviewRoomClient({
               cameraLabel={t("interview.cameraOn")}
               trackingLabel={trackingLabel}
               trackingTone={trackingTone}
+              warning={liveWarning ? t(`interview.warn_${liveWarning.reason}`) : null}
+              debugLine={proctorDebug ? formatLiveWarningDebug(proctorDebug) : undefined}
               videoRef={attachCameraVideo}
             />
             {integrity.camera !== "off" &&

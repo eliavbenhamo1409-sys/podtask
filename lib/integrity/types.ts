@@ -15,6 +15,8 @@
  *   MULTIPLE_FACES           multiple_faces      (interval)
  *   HEAD_AWAY                head_away           (interval)
  *   TRACKING_UNAVAILABLE     tracking_unavailable (interval)
+ *   LIVE_WARNING             integrity_warning   (point: a warning sign was
+ *                                                 shown on the self-view)
  */
 
 export type IntegrityEventKind =
@@ -35,6 +37,7 @@ export type IntegrityEventKind =
   | "multiple_faces"
   | "head_away"
   | "tracking_unavailable"
+  | "integrity_warning"
   | "silence_nudge"
   | "own_words_prompt"
   | "mic_muted"

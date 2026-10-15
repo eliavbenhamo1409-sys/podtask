@@ -6,6 +6,7 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 import { GlowOrb, type OrbState } from "@/components/podtask/glow-orb";
+import { AlertIcon } from "@/components/podtask/icons";
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -108,7 +109,9 @@ export type TileCameraStatus =
 /**
  * The student's own tile: avatar that rings with their voice, mic meter,
  * and (when the assignment uses the camera) a small mirrored self-view with
- * a quiet "camera on" dot. The video never leaves the browser.
+ * a quiet "camera on" dot. The video never leaves the browser. A warning
+ * sign appears on the self-view only on reasonable suspicion (see
+ * `lib/integrity/live-warning.ts`).
  */
 export function StudentTile({
   eyebrow,
@@ -123,6 +126,8 @@ export function StudentTile({
   cameraLabel,
   trackingLabel,
   trackingTone = "muted",
+  warning,
+  debugLine,
   videoRef,
 }: {
   eyebrow: ReactNode;
@@ -140,8 +145,13 @@ export function StudentTile({
   /** Short line under the self-view: "presence detection active" / "not available". */
   trackingLabel?: string;
   trackingTone?: "ok" | "muted" | "warn";
+  /** Warning text shown on the self-view; null / omitted = no sign. */
+  warning?: string | null;
+  /** Raw detector readings under the self-view (tuning only). */
+  debugLine?: string;
   videoRef?: (el: HTMLVideoElement | null) => void;
 }) {
+  const showWarning = cameraStatus === "on" && !!warning;
   const ring = muted
     ? 0
     : level === undefined
@@ -167,6 +177,7 @@ export function StudentTile({
           <div
             className="room-cam-wrap"
             data-on={cameraStatus === "on" ? "true" : undefined}
+            data-warn={showWarning ? "true" : undefined}
             aria-label={cameraStatus === "on" ? cameraLabel : undefined}
           >
             <video
@@ -183,6 +194,12 @@ export function StudentTile({
             ) : (
               <span className="room-cam-dot" title={cameraLabel} aria-hidden />
             )}
+            {showWarning ? (
+              <div key={warning} className="room-cam-warn" role="status">
+                <AlertIcon size={14} aria-hidden />
+                <span>{warning}</span>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="room-avatar">
@@ -193,6 +210,11 @@ export function StudentTile({
           <div className="room-cam-tracking" data-tone={trackingTone} role="status">
             <span className="room-cam-tracking-dot" aria-hidden />
             {trackingLabel}
+          </div>
+        ) : null}
+        {cameraStatus !== undefined && debugLine ? (
+          <div className="room-cam-debug" dir="ltr">
+            {debugLine}
           </div>
         ) : null}
         <div className="room-student-name">{name}</div>

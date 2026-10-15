@@ -31,6 +31,7 @@ export const EVENT_KINDS = [
   "multiple_faces",
   "head_away",
   "tracking_unavailable",
+  "integrity_warning",
   "silence_nudge",
   "own_words_prompt",
   "mic_muted",
