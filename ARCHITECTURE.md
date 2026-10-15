@@ -261,9 +261,10 @@ Built on the telemetry above; nothing here changes the knowledge score.
 - **Camera** (`CameraMonitor` + `face-worker.ts` + `PresenceTracker` +
   `head-pose.ts`): MediaPipe Face Landmarker (model vendored at
   `public/models/face_landmarker.task`, wasm from jsDelivr) runs in a Web
-  Worker on 320×240 bitmaps at ~1.4 fps, adaptive down to 0.5 fps when
+  Worker on 320×240 bitmaps at ~2 fps, adaptive down to 0.5 fps when
   inference is slow; main-thread fallback when workers are unavailable. The
-  worker returns only a face count and yaw/pitch. Filters: no face ≥ 5 s
+  worker returns only a face count, yaw/pitch and a coarse eye direction
+  (three blendshape sums, `live-warning.ts`). Filters: no face ≥ 5 s
   opens `face_missing`, closes after 0.8 s of presence; ≥ 2 faces for ≥ 2 s
   opens `multiple_faces`; |yaw| ≥ 35° or |pitch| ≥ 30° for ≥ 4 s opens
   `head_away` (hysteresis 25°/20°, 1.5 s to close). Camera integrity:
@@ -274,6 +275,23 @@ Built on the telemetry above; nothing here changes the knowledge score.
   `camera_exemption`) for camera-required interviews. Default for lecturer
   assignments is now `camera: "required"` (`settings.integrity.camera`
   relaxes it; `head_pose: false` disables orientation).
+- **Live warning sign** (`lib/integrity/live-warning.ts`,
+  `LiveWarningMonitor`, fed by `CameraMonitor`): an amber frame + short
+  text on the self-view, with a soft two-note chime
+  (`warning-chime.ts`), only on reasonable suspicion: head or eyes off the
+  screen for 5 s in a row (`look_away`), 12 s off the screen across ≥ 3
+  looks within 30 s (`glances`), a `multiple_faces` or `face_missing`
+  interval open. "Off the screen" is measured against the student's own
+  running-median baseline (learned only from on-screen samples after a
+  15-sample warm-up); eyes alone count only while the head is near its
+  baseline, a moderately turned head plus eyes further the SAME way counts
+  (`PITCH_DOWN_SIGN`, `YAW_EYE_SAME_SIGN` encode the sign conventions),
+  eyes counter-rotating against the head never do, looking up is ignored,
+  and a nearly closed eye (blink ≥ 0.8) is skipped rather than read. Each
+  appearance is stored once per reason per 20 s as `integrity_warning`
+  (payload `reason`, `cue` head/eyes/both, `away_ms`, `episodes`) and the
+  lecturer sees it as "needs a check". `?proctorDebug=1` prints the raw
+  readings under the self-view.
 - **Lecturer** (`components/lecturer/exam-integrity.tsx`,
   `lib/lecturer/exam-integrity.ts`): "Exam Integrity" panel with counts,
   away time, camera state / exemption, a three-lane timeline with question
@@ -303,7 +321,8 @@ under the lecturer's session and the lecturer RLS policies.
 
 Code: `supabase/functions/_shared/grading/*` (runtime-neutral: Deno in the
 edge functions, Node in `tests/`, `bench/`, `load/`), `grading-worker`,
-migrations `20260515000001_grading_engine.sql` + `20260515000002_grading_cron.sql`.
+migrations `20260515000001_grading_engine.sql`, `20260515000002_grading_cron.sql`,
+`20260515000003_grading_capacity.sql`. In production since 2026-10-15.
 
 ### One source of truth for the score
 
@@ -343,8 +362,15 @@ provenance block (`engine: v2`, versions, `grading_run_id`,
   completed interviews without a job, re-queues done jobs whose report is
   missing, expires leases and capacity slots.
 - pg_cron ticks `private.grading_tick` every 10 s; it POSTs to the worker
-  (service key from Vault) only when there is something to claim, fanning out
-  up to 8 invocations by backlog.
+  only when there is something to claim, fanning out up to 8 invocations by
+  backlog. The request carries `x-grading-token`, a random token the
+  migration generated in Vault; the worker (deployed with
+  `verify_jwt = false`) accepts only that token or the exact service-role key.
+- One `worker` capacity slot per invocation (pool full → the invocation
+  returns at once). Inside it, `worker_batch` lanes (2) each grade a job and
+  keep claiming the next one for 120 s, so a backlog drains without waiting
+  for ticks. A wait for model capacity hands the job back with
+  `defer_grading_job` (no attempt spent; the run stays resumable).
 - Interrupted runs resume from their checkpointed evaluations; a run that
   lost its lease to a newer run is `superseded` and cannot publish.
 - `grading_status(interview_id)` (owner / lecturer) exposes job status,
@@ -352,19 +378,41 @@ provenance block (`engine: v2`, versions, `grading_run_id`,
 
 ### Global concurrency gate
 
-`ai_capacity` pools (`realtime`, `prepare`, `evaluate`, `verify`,
-`narrative`) with `acquire_ai_slot` / `release_ai_slot` leases in Postgres
-(row lock per pool, TTL expiry). Background pools wait with backoff instead
+`ai_capacity` pools with `acquire_ai_slot` / `release_ai_slot` leases in
+Postgres (row lock per pool, TTL expiry). Production values (2026-10-15):
+
+| pool | max | basis |
+| --- | --- | --- |
+| `realtime` | 12 | last measured OpenAI Realtime limit (200k TPM); not re-verified |
+| `evaluate` | 40 | gpt-4.1 2M TPM measured from response headers; one busy slot ≈ 35k TPM |
+| `verify` | 16 | shares the gpt-4.1 budget |
+| `narrative` | 16 | gpt-4.1-mini 10M TPM measured |
+| `prepare` | 8 | unchanged |
+| `worker` | 8 | concurrent `grading-worker` invocations (× 2 lanes = 16 jobs) |
+ Background pools wait with backoff instead
 of bursting into 429s; `create-realtime-session` acquires one `realtime`
 slot per interview for the whole session and answers `503 at_capacity` +
 `retryAfterSeconds` when the pool is full. **`realtime.max_concurrent`
 defaults to 12 (the measured OpenAI Build tier) and must be raised by hand
 after the org tier is verified.**
 
-### Verification status
+### Verification status (2026-10-15)
 
-Verified locally: 29 engine tests + 10 SQL tests (`cd tests && npm test`,
-pglite applies the real migration), mock benchmark, mock load runs
-(`bench/README.md`, `load/README.md`). Not verified: production deploy,
-real-model accuracy (needs `OPENAI_API_KEY`), the org's real rate limits
-(`bench/grading/run.ts --probe`), live voice at scale (OpenAI tier).
+Tested: 42 engine + SQL tests (`cd tests && npm test`, pglite applies the
+real migrations), mock benchmark and in-process load model.
+
+Verified in production (numbers in `load/README.md`):
+- Real models, 4 interviews (good / wrong with the right terms / mixed with
+  a skip / Arabic): 94 / 31 / 49 / 88, evidence verified in Hebrew and
+  Arabic, completion to report 16 s p50; ≈ $0.04-0.06 per interview.
+- Completion bursts of 20 to 250 interviews within 30 s through the real
+  functions (server-side mock model, 4.5 s per call): every report written
+  exactly once, zero retries, zero dead jobs; 200 → p50 86 s, p95 153 s.
+- Scenario A and the realtime admission burst: see `load/README.md`.
+
+Not verified: the realtime pool (12) against the org's current Realtime
+limit; 200 live voice sessions (WebRTC + OpenAI Realtime were not driven);
+real-model grading under a 200 burst (pools are sized from measured limits,
+not from a measured burst); grading accuracy against lecturer ratings (no
+human-labelled set yet; a verbatim-read Arabic answer scored 93 on knowledge,
+which the integrity overlap flag reports separately).

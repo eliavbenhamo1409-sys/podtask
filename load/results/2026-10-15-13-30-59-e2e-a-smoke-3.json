@@ -1,0 +1,89 @@
+{
+  "mode": "session",
+  "label": "a-smoke",
+  "n": 3,
+  "burstSec": 5,
+  "durationMin": 1,
+  "elapsedSec": 96,
+  "completeOk": 3,
+  "reportsReady": 3,
+  "dead": 0,
+  "notReady": [],
+  "completionToReportSec": {
+    "n": 3,
+    "p50": 12,
+    "p95": 20,
+    "p99": 20,
+    "max": 20
+  },
+  "lastReportAtSec": 96,
+  "calls": {
+    "interview-control": {
+      "n": 3,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 3,
+        "p50": 2472,
+        "p95": 2671,
+        "p99": 2671,
+        "max": 2671
+      }
+    },
+    "save-interview-message": {
+      "n": 18,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 18,
+        "p50": 1353,
+        "p95": 2078,
+        "p99": 2078,
+        "max": 2078
+      }
+    },
+    "complete-interview": {
+      "n": 3,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 3,
+        "p50": 3935,
+        "p95": 4163,
+        "p99": 4163,
+        "max": 4163
+      }
+    },
+    "rest:reports": {
+      "n": 22,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 22,
+        "p50": 368,
+        "p95": 918,
+        "p99": 1114,
+        "max": 1114
+      }
+    },
+    "rpc:grading_status": {
+      "n": 7,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 7,
+        "p50": 361,
+        "p95": 1298,
+        "p99": 1298,
+        "max": 1298
+      }
+    }
+  },
+  "scores": {
+    "n": 3,
+    "p50": 12,
+    "p95": 12,
+    "p99": 12,
+    "max": 12
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "mode": "session",
+  "label": "a-200-12min",
+  "n": 200,
+  "burstSec": 30,
+  "durationMin": 12,
+  "elapsedSec": 937,
+  "completeOk": 200,
+  "reportsReady": 200,
+  "dead": 0,
+  "notReady": [],
+  "completionToReportSec": {
+    "n": 200,
+    "p50": 60,
+    "p95": 108,
+    "p99": 111,
+    "max": 114
+  },
+  "lastReportAtSec": 937,
+  "calls": {
+    "interview-control": {
+      "n": 200,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 200,
+        "p50": 2319,
+        "p95": 3068,
+        "p99": 4168,
+        "max": 4805
+      }
+    },
+    "save-interview-message": {
+      "n": 7200,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 7200,
+        "p50": 1377,
+        "p95": 2058,
+        "p99": 2591,
+        "max": 7857
+      }
+    },
+    "complete-interview": {
+      "n": 200,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 200,
+        "p50": 5198,
+        "p95": 6693,
+        "p99": 7593,
+        "max": 7856
+      }
+    },
+    "rest:reports": {
+      "n": 6444,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 6444,
+        "p50": 312,
+        "p95": 704,
+        "p99": 1077,
+        "max": 2792
+      }
+    },
+    "rpc:grading_status": {
+      "n": 1639,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 1639,
+        "p50": 309,
+        "p95": 436,
+        "p99": 850,
+        "max": 1229
+      }
+    }
+  },
+  "scores": {
+    "n": 200,
+    "p50": 27,
+    "p95": 27,
+    "p99": 27,
+    "max": 27
+  }
+}

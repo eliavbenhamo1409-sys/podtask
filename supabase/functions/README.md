@@ -14,7 +14,7 @@ deploy one function at a time.
 | `create-realtime-session` | interview room (`createRealtimeSession`) | Mint an OpenAI Realtime client secret with the system prompt from `_shared/realtime-instructions.ts` (he / en / ar). **Requires `interviews.status = in_progress`**, is rate limited per interview (8 per 10 min, 40 total, counted from `system_events`) and acquires one `realtime` capacity slot per interview (`ai_capacity`; full pool → `503 at_capacity` + `retryAfterSeconds`). Adds the `flag_answer` tool when the assignment enables host flags, passes the conversation-care rules (silence nudges, own words) and a resume context after a drop. | `openai_realtime` |
 | `save-interview-message` | `lib/realtime/interview-session.ts` | The only write path for `interview_messages`. Requires a running interview (90 s grace after completion), stores the room's per-turn timing under `metadata` (source = client) and dedupes by `clientId` (unique index). | — |
 | `complete-interview` | `interview-session.ts` on `closing` | Idempotent completion, then the server-side integrity analysis (`_shared/integrity.ts`: session facts, timing extremes, verbatim overlap → `interview_flags`, summary in `interviews.metadata.integrity_summary`), releases the `realtime` capacity slot, then KICKS `grading-worker` (the DB trigger already queued the job). `GRADING_LEGACY_SYNC=1` restores the old synchronous `generate-report` + `evaluate-answer` calls. | — (legacy path: `openai_realtime2`) |
-| `grading-worker` | `complete-interview` (kick), pg_cron via pg_net (tick) | Service-role only (role claim checked). Claims `grading_jobs` with a lease and runs the grading engine (`_shared/grading/*`): per-question evidence-verified evaluation, selective second pass, deterministic score, narrative, one-transaction persist. Retries with backoff / Retry-After, dead-letters, `options.provider = mock` for load tests. See `ARCHITECTURE.md` §9. | `openai_realtime2` |
+| `grading-worker` | `complete-interview` (kick), pg_cron via pg_net (tick) | Deployed with `verify_jwt = false`; accepts only the exact service-role key (the kick) or the `x-grading-token` header checked against Vault (`check_grading_worker_token`, the cron tick). One `worker` capacity slot per invocation; `worker_batch` lanes each keep claiming the next job for 120 s. Claims `grading_jobs` with a lease and runs the grading engine (`_shared/grading/*`): per-question evidence-verified evaluation, selective second pass, deterministic score, narrative, one-transaction persist. Retries with backoff / Retry-After, dead-letters, `options.provider = mock` for load tests. See `ARCHITECTURE.md` §9. | `openai_realtime2` |
 | `generate-report` | student (recovery) / lecturer (forced re-run) | Thin wrapper: re-queues the grading job (`requeue_grading`) and kicks the worker. A student may only trigger it while no report exists; a lecturer of the course forces a NEW run. | — |
 | `evaluate-answer` | student (recovery) / lecturer (forced re-run) | Same wrapper semantics as `generate-report` (kept for its callers). | — |
 | `create-guest-session` | login screen ("continue as guest") | Service-role: create a one-shot guest auth user. **`verify_jwt=false` by design** (it is the login path). Rate limited per client address (6/h) and globally (150/h) through `rate_limit_events`. | service role |
@@ -44,31 +44,32 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 | --- | --- | --- |
 | prepare-submission | v6 (2026-10-14) | yes — question pool + seeded selection, raw document text |
 | interview-control | v5 (2026-10-15) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required`, guest accounts get the lecturer integrity defaults (`isGuestIdentity`), `integrity_warning` event kind (the live warning sign on the self-view) |
-| create-realtime-session | v15 (2026-10-14) | **no — repo adds the `realtime` admission check (grading engine v2); deploy after migration 20260515000001** |
+| create-realtime-session | v16 (2026-10-15) | yes — `realtime` admission slot per interview, `503 at_capacity` + `retryAfterSeconds` |
 | save-interview-message | v5 (2026-10-14) | yes — status guard, timing metadata, clientId dedupe |
-| evaluate-answer | v4 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
-| complete-interview | v5 (2026-10-14) | **no — repo kicks `grading-worker` instead of calling the siblings** |
-| generate-report | v7 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
-| grading-worker | not deployed | new |
+| evaluate-answer | v5 (2026-10-15) | yes — re-queue wrapper (v2 engine) |
+| complete-interview | v6 (2026-10-15) | yes — integrity analysis, releases the `realtime` slot, kicks `grading-worker` |
+| generate-report | v8 (2026-10-15) | yes — re-queue wrapper (v2 engine) |
+| grading-worker | v3 (2026-10-15) | yes — lanes keep claiming for 120 s; `verify_jwt = false` (auth in the function) |
 | create-guest-session | v2 (2026-10-14) | yes — rate limit |
 
-### Grading engine v2 deploy order (not yet done; owner approval required)
+### Grading engine v2 deploy record (2026-10-15, owner approved)
 
-1. `apply_migration` `20260515000001_grading_engine.sql` (additive; the
-   trigger starts queueing jobs that wait for a worker).
-2. Deploy `grading-worker` (`index.ts` + `_shared/cors.ts`, `supabase.ts`,
-   `openai.ts`, `overlap.ts`, `grading/*.ts`), `verify_jwt = true`.
-3. Deploy `complete-interview`, `evaluate-answer`, `generate-report`
-   (each with `_shared/grading/kick.ts` and its other imports), then
-   `create-realtime-session`.
-4. In SQL: `select vault.create_secret('https://jxlrpewoqikpswxmtdma.supabase.co', 'project_url');`
-   and `select vault.create_secret('<service_role_key>', 'service_role_key');`
-   then `apply_migration` `20260515000002_grading_cron.sql`.
-5. Set `ai_capacity.realtime.max_concurrent` from the verified OpenAI tier
-   (`node bench/grading/run.ts --probe` prints the rate-limit headers).
-6. Rollback: `update grading_config set queue_enabled = false`, redeploy
-   the previous function versions or set `GRADING_LEGACY_SYNC=1` on
+1. Migrations applied: `grading_engine` (20260515000001), `grading_cron`
+   (20260515000002: pg_cron + pg_net, Vault `grading_worker_token`
+   generated in the database, 10 s tick, 5 min reconcile),
+   `grading_capacity` (20260515000003: pools sized from the measured
+   OpenAI limits). Vault also holds `project_url`.
+2. Functions deployed with every `_shared` file they import, each bundle
+   compared file by file with the repo after the deploy (`get_edge_function`).
+   **Unicode pitfall:** the deploy payload reorders combining characters
+   (Arabic harakat, U+FE0F), which once turned the diacritics regex in
+   `_shared/overlap.ts` into a class that matched Arabic letters. Keep such
+   characters as `\u` escapes in source and always diff the deployed bundle.
+3. Rollback: `update grading_config set queue_enabled = false`, redeploy the
+   previous function versions, or set `GRADING_LEGACY_SYNC=1` on
    `complete-interview`.
+4. `ai_capacity.realtime.max_concurrent` is still 12 (the last measured
+   OpenAI Realtime limit); raise it only after the org tier is re-verified.
 
 Note (2026-10-16, 2026-10-15): `_shared/integrity-settings.ts` changed twice
 (camera default `required` + `headPose`; then `isGuestIdentity` and the

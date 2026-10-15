@@ -1,0 +1,64 @@
+{
+  "mode": "complete",
+  "label": "b-100-lanes",
+  "n": 100,
+  "burstSec": 30,
+  "elapsedSec": 103,
+  "completeOk": 100,
+  "reportsReady": 100,
+  "dead": 0,
+  "notReady": [],
+  "completionToReportSec": {
+    "n": 100,
+    "p50": 41,
+    "p95": 65,
+    "p99": 66,
+    "max": 69
+  },
+  "lastReportAtSec": 103,
+  "calls": {
+    "complete-interview": {
+      "n": 100,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 100,
+        "p50": 3879,
+        "p95": 4535,
+        "p99": 4759,
+        "max": 5106
+      }
+    },
+    "rest:reports": {
+      "n": 2119,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 2119,
+        "p50": 347,
+        "p95": 758,
+        "p99": 960,
+        "max": 1479
+      }
+    },
+    "rpc:grading_status": {
+      "n": 535,
+      "errors": 0,
+      "errorCodes": {},
+      "latencyMs": {
+        "n": 535,
+        "p50": 342,
+        "p95": 743,
+        "p99": 1038,
+        "max": 1845
+      }
+    }
+  },
+  "scores": {
+    "n": 100,
+    "p50": 72,
+    "p95": 72,
+    "p99": 72,
+    "max": 72
+  }
+}

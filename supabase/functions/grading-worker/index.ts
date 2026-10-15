@@ -18,8 +18,10 @@
 //
 // Concurrency: one `worker` capacity slot per invocation (pool size in
 // `ai_capacity`); when the pool is full the invocation returns at once and
-// the job waits for the next tick. Model calls are bounded by the
-// `evaluate` / `verify` / `narrative` pools inside the pipeline.
+// the job waits for the next tick. Inside an invocation, `worker_batch`
+// lanes each grade a job and keep claiming the next one for
+// CLAIM_BUDGET_MS, so the queue drains without waiting for ticks. Model
+// calls are bounded by the `evaluate` / `verify` / `narrative` pools.
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 import { OPENAI_KEY_NAME } from "../_shared/openai.ts";
@@ -36,6 +38,8 @@ declare const EdgeRuntime: { waitUntil?: (p: Promise<unknown>) => void } | undef
 
 const DEFAULT_LIMIT = 2;
 const HEARTBEAT_MS = 45_000;
+/** A worker keeps claiming new jobs for this long after it starts (edge wall-clock limit is 400 s). */
+const CLAIM_BUDGET_MS = 120_000;
 
 interface JobRow {
   id: string;
@@ -115,9 +119,36 @@ Deno.serve(async (req) => {
   const store = createSupabaseStore(sb);
   const gate = createSupabaseGate(sb, (event, data) => console.warn(event, data));
   const engine = config.engine ?? {};
-  const work = Promise.all(claimed.map((job) => processJob(sb, store, gate, workerId, job, engine, config.lease_seconds)))
-    .then((results) => {
-      console.log(JSON.stringify({ event: "worker.done", worker: workerId, results }));
+  const lanes = Math.max(claimed.length, Math.max(1, Math.min(10, config.worker_batch || DEFAULT_LIMIT)));
+  const invokedAt = Date.now();
+
+  // Each lane grades its job, then keeps claiming the next queued job until
+  // the claim budget is spent, so a busy queue never waits for the next
+  // cron tick between jobs. The lane count is the worker's batch size.
+  const lane = async (first: JobRow | undefined): Promise<Record<string, unknown>[]> => {
+    const out: Record<string, unknown>[] = [];
+    let job = first;
+    for (;;) {
+      if (!job) {
+        if (Date.now() - invokedAt > CLAIM_BUDGET_MS) break;
+        const { data: more } = await sb.rpc("claim_grading_jobs", {
+          p_worker: workerId,
+          p_limit: 1,
+          p_interview_id: null,
+          p_lease_seconds: config.lease_seconds,
+        });
+        job = ((more ?? []) as JobRow[])[0];
+        if (!job) break;
+      }
+      out.push(await processJob(sb, store, gate, workerId, job, engine, config.lease_seconds));
+      job = undefined;
+    }
+    return out;
+  };
+  const work = Promise.all(Array.from({ length: lanes }, (_, i) => lane(claimed[i])))
+    .then((perLane) => {
+      const results = perLane.flat();
+      console.log(JSON.stringify({ event: "worker.done", worker: workerId, jobs: results.length, ms: Date.now() - invokedAt, results }));
       return results;
     })
     .finally(() => Promise.resolve(sb.rpc("release_ai_slot", { p_pool: "worker", p_holder: workerId })).catch(() => {}));
