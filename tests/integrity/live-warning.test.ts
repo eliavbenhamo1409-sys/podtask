@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   LIVE_WARNING_DEFAULTS,
   LiveWarningMonitor,
+  PITCH_DOWN_SIGN,
+  YAW_EYE_SAME_SIGN,
   eyeGazeFromBlendshapes,
   formatLiveWarningDebug,
   type EyeGaze,
@@ -159,11 +161,50 @@ test("a camera mounted to the side becomes the baseline, not a look away", () =>
   assert.equal(r.m.warning?.reason, "look_away");
 });
 
-test("eyes are not read while the head is turned (they may be compensating)", () => {
+test("eyes counter-rotating against a turned head are compensation, not a look away", () => {
   const r = rig();
   r.run(WARM);
-  r.run(15_000, { yaw: 22, eyes: { h: 0.6, v: 0, blink: 0.1 } });
+  r.run(15_000, { yaw: 22, eyes: { h: -0.6, v: 0, blink: 0.1 } });
   assert.deepEqual(r.shown, []);
+});
+
+test("head moderately turned with the eyes further the same way is a look away (both)", () => {
+  const r = rig();
+  r.run(WARM);
+  r.run(8000, { yaw: 18, eyes: { h: 0.25, v: 0, blink: 0.1 } });
+  assert.equal(r.m.warning?.reason, "look_away");
+  assert.equal(r.m.warning?.cue, "both");
+  assert.equal(r.events[0]?.cue, "both");
+});
+
+test("reading the desk: head nodded 14° with the eyes cast down, neither alone enough", () => {
+  const r = rig();
+  r.run(WARM);
+  r.run(8000, { pitch: 14, eyes: { h: 0, v: 0.2, blink: 0.35 } });
+  assert.equal(r.m.warning?.reason, "look_away");
+  assert.equal(r.m.warning?.cue, "both");
+});
+
+test("leaning back (head up, eyes down to keep the screen) is not a look away", () => {
+  const r = rig();
+  r.run(WARM);
+  r.run(15_000, { pitch: -14, eyes: { h: 0, v: 0.35, blink: 0.2 } });
+  assert.deepEqual(r.shown, []);
+});
+
+test("a drooping upper lid while looking down is still a readable look down", () => {
+  const r = rig();
+  r.run(WARM);
+  r.run(8000, { eyes: { h: 0, v: 0.5, blink: 0.65 } });
+  assert.equal(r.m.warning?.reason, "look_away");
+  assert.equal(r.m.warning?.cue, "eyes");
+});
+
+test("a moderate look down crosses the lowered eye threshold", () => {
+  const r = rig();
+  r.run(WARM);
+  r.run(8000, { eyes: { h: 0, v: 0.34, blink: 0.3 } });
+  assert.equal(r.m.warning?.reason, "look_away");
 });
 
 test("no look-away sign before the baseline has settled", () => {
@@ -227,5 +268,48 @@ test("the debug readout formats every field", () => {
   const text = formatLiveWarningDebug(d);
   assert.match(text, /faces 1/);
   assert.match(text, /yaw 0°/);
-  assert.equal(text.split("\n").length, 4);
+  assert.match(text, /gaze down/);
+  assert.equal(text.split("\n").length, 5);
+});
+
+/*
+ * Readings of real photographs run through the app's own landmarker
+ * (face_landmarker.task, tasks-vision 1.1.0, IMAGE mode, the production
+ * angle formula). They pin the sign conventions the combined rule relies on.
+ */
+const PHOTOS = {
+  headDown: [43.5, 19.1, 34, 40.7],
+  headUp: [-30.3, -25.1, -21.9, -8, -3.9],
+  headTurnedOwnLeftYaw: [40, 56, 26.8],
+  headTurnedOwnRightYaw: [-23.3, -48.9, -20.2],
+  eyesOwnLeftH: [0.89, 0.76, 0.91],
+  eyesOwnRightH: [-0.79, -0.85, -0.8],
+  // eyes cast down, head near level: v and blink rise together
+  eyesDown: [
+    { pitch: 5.2, v: 0.41, blink: 0.39 },
+    { pitch: 30.3, v: 0.54, blink: 0.58 },
+    { pitch: 31.8, v: 0.74, blink: 0.73 },
+  ],
+};
+
+test("sign conventions match real photographs", () => {
+  for (const p of PHOTOS.headDown) assert.ok(p * PITCH_DOWN_SIGN > 0);
+  for (const p of PHOTOS.headUp) assert.ok(p * PITCH_DOWN_SIGN < 0);
+  // A turn to the subject's own left and eyes to the subject's own left share a sign.
+  const yawLeft = Math.sign(PHOTOS.headTurnedOwnLeftYaw[0]);
+  for (const y of PHOTOS.headTurnedOwnLeftYaw) assert.equal(Math.sign(y), yawLeft);
+  for (const y of PHOTOS.headTurnedOwnRightYaw) assert.equal(Math.sign(y), -yawLeft);
+  for (const h of PHOTOS.eyesOwnLeftH) assert.equal(Math.sign(h) * YAW_EYE_SAME_SIGN, yawLeft);
+  for (const h of PHOTOS.eyesOwnRightH) assert.equal(Math.sign(h) * YAW_EYE_SAME_SIGN, -yawLeft);
+});
+
+test("real eyes-down readings are kept even with the lid lowered", () => {
+  for (const d of PHOTOS.eyesDown) {
+    assert.ok(d.blink < LIVE_WARNING_DEFAULTS.blinkMax, `blink ${d.blink} would be discarded`);
+    const r = rig();
+    r.run(WARM);
+    // The head part of the reading is kept below the head-alone threshold.
+    r.run(8000, { pitch: Math.min(d.pitch, 12), eyes: { h: 0, v: d.v, blink: d.blink } });
+    assert.equal(r.m.warning?.reason, "look_away", JSON.stringify(d));
+  }
 });

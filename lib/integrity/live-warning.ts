@@ -66,7 +66,24 @@ export function eyeGazeFromBlendshapes(categories: ReadonlyArray<BlendshapeCateg
 }
 
 export type LiveWarningReason = "look_away" | "glances" | "another_person" | "face_missing";
-export type LookCue = "head" | "eyes";
+/** What was off the screen: the head alone, the eyes alone, or both together. */
+export type LookCue = "head" | "eyes" | "both";
+
+/**
+ * Sign conventions of the two signals, so the combined rule can tell "head
+ * down and eyes down" (off the screen) from "head up and eyes down" (still
+ * on the screen). MediaPipe's canonical face looks along +Z with +Y up and
+ * +X on the subject's left; the matrix is column-major; blendshape "Left"
+ * is the subject's own left eye (frames go to the model unmirrored). So a
+ * nod down is a positive pitch, and a turn or a glance to the subject's own
+ * left is a positive yaw and a positive eye `h`. Confirmed on 28 real
+ * photographs run through this landmarker (values pinned in
+ * `tests/integrity/live-warning.test.ts`).
+ */
+/** Multiply `pitchDeg` by this to get "degrees nodded down". */
+export const PITCH_DOWN_SIGN = 1;
+/** +1 when a positive `yawDeg` and a positive eye `h` point the same way. */
+export const YAW_EYE_SAME_SIGN = 1;
 
 export interface LiveWarning {
   reason: LiveWarningReason;
@@ -92,7 +109,7 @@ export interface LiveWarningThresholds {
   headYawExitDeg: number;
   headPitchEnterDeg: number;
   headPitchExitDeg: number;
-  /** Above this head deviation the eyes are not read (they may be compensating). */
+  /** Above this head deviation the eyes alone are not judged (they may be compensating). */
   eyeIgnoreYawDeg: number;
   eyeIgnorePitchDeg: number;
   /** |h| deviation from the baseline (enter / exit). */
@@ -101,7 +118,22 @@ export interface LiveWarningThresholds {
   /** Downward v deviation from the baseline (enter / exit). */
   eyeDownEnter: number;
   eyeDownExit: number;
-  /** Mean eyeBlink above which an eye reading is skipped. */
+  /**
+   * Combined rule: the head moderately off AND the eyes further the same
+   * way (reading a page on the desk: head down 12°, eyes down too). Each
+   * cue is divided by its own enter threshold; the sum enters at
+   * `gazeEnter` and exits below `gazeExit`, with both cues at least their
+   * minimum so one cue alone never gets there.
+   */
+  gazeHeadMinDeg: number;
+  gazeEyeMin: number;
+  gazeEnter: number;
+  gazeExit: number;
+  /**
+   * Mean eyeBlink above which an eye reading is skipped. Looking down
+   * lowers the upper lid, which raises eyeBlink to ~0.4-0.7, so only a
+   * nearly closed eye is treated as unreadable.
+   */
   blinkMax: number;
   /** Exponential smoothing factor, 0..1 (1 = none). */
   smoothing: number;
@@ -136,13 +168,17 @@ export const LIVE_WARNING_DEFAULTS: LiveWarningThresholds = {
   headPitchExitDeg: 15,
   eyeIgnoreYawDeg: 15,
   eyeIgnorePitchDeg: 12,
-  eyeSideEnter: 0.5,
-  eyeSideExit: 0.32,
-  eyeDownEnter: 0.45,
-  eyeDownExit: 0.28,
-  blinkMax: 0.55,
-  smoothing: 0.5,
-  sustainedMs: 6000,
+  eyeSideEnter: 0.35,
+  eyeSideExit: 0.22,
+  eyeDownEnter: 0.3,
+  eyeDownExit: 0.18,
+  gazeHeadMinDeg: 7,
+  gazeEyeMin: 0.1,
+  gazeEnter: 1,
+  gazeExit: 0.65,
+  blinkMax: 0.8,
+  smoothing: 0.6,
+  sustainedMs: 5000,
   windowMs: 30_000,
   windowAwayMs: 12_000,
   windowEpisodes: 3,
@@ -181,6 +217,9 @@ export interface LiveWarningDebug {
   dEyeSide: number | null;
   dEyeDown: number | null;
   baselineSamples: number;
+  /** Combined head+eye scores (1 = enter); null before the baselines settle. */
+  downScore: number | null;
+  sideScore: number | null;
   off: LookCue | null;
   offMs: number;
   windowAwayMs: number;
@@ -248,6 +287,9 @@ export class LiveWarningMonitor {
   // Off-screen state.
   private headOff = false;
   private eyesOff = false;
+  private gazeOff = false;
+  private downScore: number | null = null;
+  private sideScore: number | null = null;
   private offSince: number | null = null;
   private offCue: LookCue | null = null;
   private episodes: Episode[] = [];
@@ -321,6 +363,8 @@ export class LiveWarningMonitor {
   reset(): boolean {
     this.headOff = false;
     this.eyesOff = false;
+    this.gazeOff = false;
+    this.downScore = this.sideScore = null;
     this.offSince = null;
     this.offCue = null;
     this.episodes = [];
@@ -340,6 +384,8 @@ export class LiveWarningMonitor {
       this.endLook(now);
       this.headOff = false;
       this.eyesOff = false;
+      this.gazeOff = false;
+      this.downScore = this.sideScore = null;
       this.yaw = this.pitch = this.eyeSide = this.eyeDown = this.blink = null;
       return;
     }
@@ -368,42 +414,74 @@ export class LiveWarningMonitor {
       return;
     }
 
-    const dYaw = Math.abs(this.yaw - clamp(this.baseYaw.median(), this.th.baselineMaxYawDeg));
-    const dPitch = Math.abs(this.pitch - clamp(this.basePitch.median(), this.th.baselineMaxPitchDeg));
+    // Signed deviations from the baselines.
+    const dYaw = this.yaw - clamp(this.baseYaw.median(), this.th.baselineMaxYawDeg);
+    const dPitch = this.pitch - clamp(this.basePitch.median(), this.th.baselineMaxPitchDeg);
+    const aYaw = Math.abs(dYaw);
+    const aPitch = Math.abs(dPitch);
     this.headOff = this.headOff
-      ? dYaw >= this.th.headYawExitDeg || dPitch >= this.th.headPitchExitDeg
-      : dYaw >= this.th.headYawEnterDeg || dPitch >= this.th.headPitchEnterDeg;
-    const headSteady = !this.headOff && dYaw < this.th.eyeIgnoreYawDeg && dPitch < this.th.eyeIgnorePitchDeg;
+      ? aYaw >= this.th.headYawExitDeg || aPitch >= this.th.headPitchExitDeg
+      : aYaw >= this.th.headYawEnterDeg || aPitch >= this.th.headPitchEnterDeg;
+    const headNear = aYaw < this.th.eyeIgnoreYawDeg && aPitch < this.th.eyeIgnorePitchDeg;
 
+    const eyesReady = eyesKnown && this.baseEyeSide.length >= this.th.baselineMinSamples;
+    const dSide = eyesReady ? (this.eyeSide as number) - clamp(this.baseEyeSide.median(), this.th.baselineMaxEyeSide) : null;
+    const dDown = eyesReady ? (this.eyeDown as number) - clamp(this.baseEyeDown.median(), this.th.baselineMaxEyeDown) : null;
+
+    // Eyes alone: only while the head is close to where it usually is.
+    // With the head turned, the eyes often counter-rotate to stay on the
+    // screen, and that is not a look away.
     let eyesSteady = false;
-    if (!headSteady) {
+    if (this.headOff || !headNear) {
       this.eyesOff = false;
-    } else if (eyesKnown && this.baseEyeSide.length < this.th.baselineMinSamples) {
+    } else if (eyesKnown && !eyesReady) {
       eyesSteady = true;
-    } else if (eyesKnown) {
-      const dSide = Math.abs((this.eyeSide as number) - clamp(this.baseEyeSide.median(), this.th.baselineMaxEyeSide));
-      const dDown = (this.eyeDown as number) - clamp(this.baseEyeDown.median(), this.th.baselineMaxEyeDown);
+    } else if (dSide !== null && dDown !== null) {
+      const aSide = Math.abs(dSide);
       this.eyesOff = this.eyesOff
-        ? dSide >= this.th.eyeSideExit || dDown >= this.th.eyeDownExit
-        : dSide >= this.th.eyeSideEnter || dDown >= this.th.eyeDownEnter;
-      eyesSteady = !this.eyesOff && dSide < this.th.eyeSideExit && dDown < this.th.eyeDownExit;
+        ? aSide >= this.th.eyeSideExit || dDown >= this.th.eyeDownExit
+        : aSide >= this.th.eyeSideEnter || dDown >= this.th.eyeDownEnter;
+      eyesSteady = !this.eyesOff && aSide < this.th.eyeSideExit && dDown < this.th.eyeDownExit;
     }
     // A blink (eyes unreadable) keeps the previous eye state.
 
+    // Head and eyes together, the same way: a head nodded 12° with the
+    // eyes cast further down is reading the desk, although neither cue
+    // reaches its own threshold. Eyes going the opposite way (compensating)
+    // never count.
+    if (dSide !== null && dDown !== null && !this.headOff) {
+      const pitchDown = dPitch * PITCH_DOWN_SIGN;
+      const sameSide = Math.sign(dYaw) * YAW_EYE_SAME_SIGN === Math.sign(dSide);
+      const aSide = Math.abs(dSide);
+      this.downScore =
+        pitchDown >= this.th.gazeHeadMinDeg && dDown >= this.th.gazeEyeMin
+          ? pitchDown / this.th.headPitchEnterDeg + dDown / this.th.eyeDownEnter
+          : 0;
+      this.sideScore =
+        sameSide && aYaw >= this.th.gazeHeadMinDeg && aSide >= this.th.gazeEyeMin
+          ? aYaw / this.th.headYawEnterDeg + aSide / this.th.eyeSideEnter
+          : 0;
+      const best = Math.max(this.downScore, this.sideScore);
+      this.gazeOff = this.gazeOff ? best >= this.th.gazeExit : best >= this.th.gazeEnter;
+    } else {
+      this.gazeOff = false;
+      this.downScore = this.sideScore = null;
+    }
+
     // After warm-up the baseline only learns from looks at the screen, so
     // repeated glances cannot drag it toward the side they go to.
-    if (headSteady) {
+    if (!this.headOff && !this.gazeOff && headNear) {
       this.baseYaw.push(this.yaw);
       this.basePitch.push(this.pitch);
     }
-    if (eyesSteady) {
+    if (eyesSteady && !this.gazeOff) {
       this.baseEyeSide.push(this.eyeSide as number);
       this.baseEyeDown.push(this.eyeDown as number);
     }
 
-    if (this.headOff || this.eyesOff) {
+    if (this.headOff || this.eyesOff || this.gazeOff) {
       if (this.offSince === null) this.offSince = now;
-      this.offCue = this.headOff ? "head" : "eyes";
+      this.offCue = this.headOff ? "head" : this.eyesOff ? "eyes" : "both";
     } else {
       this.endLook(now);
     }
@@ -447,6 +525,8 @@ export class LiveWarningMonitor {
       dEyeDown:
         eyesReady && this.eyeDown !== null ? this.eyeDown - clamp(this.baseEyeDown.median(), this.th.baselineMaxEyeDown) : null,
       baselineSamples: this.baseYaw.length,
+      downScore: this.downScore,
+      sideScore: this.sideScore,
     };
   }
 
@@ -478,6 +558,7 @@ export function formatLiveWarningDebug(d: LiveWarningDebug): string {
     `faces ${d.faces} · base ${d.baselineSamples}`,
     `yaw ${deg(d.yaw)} Δ${deg(d.dYaw)} · pitch ${deg(d.pitch)} Δ${deg(d.dPitch)}`,
     `eyes side ${num(d.eyeSide)} Δ${num(d.dEyeSide)} · down ${num(d.eyeDown)} Δ${num(d.dEyeDown)} · blink ${num(d.blink)}`,
+    `gaze down ${num(d.downScore)} · side ${num(d.sideScore)} (1 = off)`,
     `off ${d.off ?? "–"} ${(d.offMs / 1000).toFixed(1)}s · 30s window ${(d.windowAwayMs / 1000).toFixed(1)}s / ${d.windowEpisodes}`,
   ].join("\n");
 }

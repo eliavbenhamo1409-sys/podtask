@@ -104,7 +104,9 @@ export async function ExamIntegrity({
         const reasons = ["look_away", "glances", "another_person", "face_missing"];
         if (typeof p.reason !== "string" || !reasons.includes(p.reason)) return null;
         const reason = t(`lecturer.warn_${p.reason}`);
-        return p.cue === "head" || p.cue === "eyes" ? `${reason} (${t(`lecturer.examCue_${p.cue}`)})` : reason;
+        return p.cue === "head" || p.cue === "eyes" || p.cue === "both"
+          ? `${reason} (${t(`lecturer.examCue_${p.cue}`)})`
+          : reason;
       }
       case "tracking_unavailable":
       case "camera_off":

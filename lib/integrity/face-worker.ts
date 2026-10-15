@@ -1,7 +1,7 @@
 /**
  * Web Worker: runs the MediaPipe Face Landmarker off the UI thread.
  *
- * The room posts one downscaled `ImageBitmap` at a time (1–2 per second);
+ * The room posts one downscaled `ImageBitmap` at a time (about 2 per second);
  * the worker answers with a FEW NUMBERS: how many faces, and, when exactly
  * one is tracked, its yaw / pitch and a coarse eye direction (from three
  * blendshape sums, see `live-warning.ts`). Landmarks, blendshapes and pixels

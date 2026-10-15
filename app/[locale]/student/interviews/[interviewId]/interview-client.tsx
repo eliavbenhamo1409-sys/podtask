@@ -96,6 +96,7 @@ import {
   type LiveWarning,
   type LiveWarningDebug,
 } from "@/lib/integrity/live-warning";
+import { playWarningChime } from "@/lib/integrity/warning-chime";
 import {
   DocumentIndex,
   computeOverlap,
@@ -538,6 +539,19 @@ export function InterviewRoomClient({
       docIndexRef.current = null;
     };
   }, [adapterMode, submissionId, integrity.overlapCheck]);
+
+  // A soft chime when a sign appears or changes, never when it clears.
+  const chimedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveWarning) {
+      chimedForRef.current = null;
+      return;
+    }
+    const key = `${liveWarning.reason}:${liveWarning.since}`;
+    if (chimedForRef.current === key) return;
+    chimedForRef.current = key;
+    playWarningChime();
+  }, [liveWarning]);
 
   const retryCamera = useCallback(() => {
     void cameraRef.current?.restart();

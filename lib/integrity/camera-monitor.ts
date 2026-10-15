@@ -61,7 +61,7 @@ const FRAME_RESULT_TIMEOUT_MS = 6_000;
 const NO_FRAMES_AFTER_MS = 4_000;
 const MUTED_AFTER_MS = 3_000;
 /** Sampling bands: [max average inference ms, interval ms]. */
-const WORKER_BANDS: [number, number][] = [[250, 700], [600, 1200], [Infinity, 2000]];
+const WORKER_BANDS: [number, number][] = [[200, 500], [500, 1000], [Infinity, 2000]];
 const MAIN_BANDS: [number, number][] = [[150, 1000], [300, 1500], [Infinity, 2500]];
 
 interface FrameResult {
@@ -137,7 +137,7 @@ export class CameraMonitor {
   private readonly baseIntervalMs: number;
 
   constructor(private readonly opts: CameraMonitorOptions) {
-    this.baseIntervalMs = opts.intervalMs ?? 700;
+    this.baseIntervalMs = opts.intervalMs ?? 500;
     this.intervalMs = this.baseIntervalMs;
   }
 
