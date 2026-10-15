@@ -43,7 +43,7 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 | Slug | Deployed version | Matches repo? |
 | --- | --- | --- |
 | prepare-submission | v6 (2026-10-14) | yes — question pool + seeded selection, raw document text |
-| interview-control | v4 (2026-10-15) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required`, guest accounts get the lecturer integrity defaults (`isGuestIdentity`) |
+| interview-control | v5 (2026-10-15) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required`, guest accounts get the lecturer integrity defaults (`isGuestIdentity`), `integrity_warning` event kind (the live warning sign on the self-view) |
 | create-realtime-session | v15 (2026-10-14) | **no — repo adds the `realtime` admission check (grading engine v2); deploy after migration 20260515000001** |
 | save-interview-message | v5 (2026-10-14) | yes — status guard, timing metadata, clientId dedupe |
 | evaluate-answer | v4 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
@@ -73,7 +73,7 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 Note (2026-10-16, 2026-10-15): `_shared/integrity-settings.ts` changed twice
 (camera default `required` + `headPose`; then `isGuestIdentity` and the
 `guest` flag of `resolveIntegritySettings`, which gives guest accounts the
-lecturer defaults). Only `interview-control` v4 carries the current copy, and
+lecturer defaults). Only `interview-control` (v4 and later) carries the current copy, and
 `_shared/supabase.ts`'s `userClient` now also returns `email` + `userMetadata`.
 `create-realtime-session`, `complete-interview` and `prepare-submission` still
 bundle the old copies, which is harmless for them (they only read the
