@@ -1,18 +1,56 @@
 -- Podtask: grading queue scheduler (Supabase only: pg_cron + pg_net + Vault).
 --
 -- Every 10 s `private.grading_tick('tick')` checks for claimable jobs and,
--- only when there are some, POSTs to the `grading-worker` edge function
--- (service-role bearer from Vault), fanning out several requests when the
--- backlog is large. Every 5 min the reconciler runs first.
+-- only when there are some, POSTs to the `grading-worker` edge function,
+-- fanning out several requests when the backlog is large (the `worker`
+-- capacity pool bounds how many actually run). Every 5 min the reconciler
+-- runs first.
 --
--- One-time setup by the owner (the migration cannot know the values):
---   select vault.create_secret('https://jxlrpewoqikpswxmtdma.supabase.co', 'project_url');
---   select vault.create_secret('<service_role_key>', 'service_role_key');
--- Until both secrets exist the tick is a no-op that reports
--- `vault_secrets_missing`; the worker can still be invoked by hand.
+-- Authentication: the worker accepts either the exact service-role key
+-- (the kick from complete-interview) or the `x-grading-token` header, a
+-- random token generated HERE and kept in Vault (`grading_worker_token`);
+-- the worker checks it through `check_grading_worker_token`. The token never
+-- leaves the database except in the request to the worker.
+--
+-- One-time setup by the owner / deployer (the URL is project specific):
+--   select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
+-- Until it exists the tick is a no-op that reports `vault_secrets_missing`.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
+
+-- Worker token: created once, never overwritten.
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'grading_worker_token') then
+    perform vault.create_secret(
+      encode(extensions.gen_random_bytes(32), 'hex'),
+      'grading_worker_token',
+      'Shared secret between pg_cron (grading_tick) and the grading-worker edge function.'
+    );
+  end if;
+end;
+$$;
+
+create or replace function public.check_grading_worker_token(p_token text)
+returns boolean
+language plpgsql
+security definer
+stable
+set search_path = ''
+as $$
+declare
+  v_secret text;
+begin
+  if p_token is null or length(p_token) < 32 then
+    return false;
+  end if;
+  select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'grading_worker_token';
+  return v_secret is not null and v_secret = p_token;
+end;
+$$;
+revoke all on function public.check_grading_worker_token(text) from public, anon, authenticated;
+grant execute on function public.check_grading_worker_token(text) to service_role;
 
 create or replace function private.grading_tick(p_mode text default 'tick')
 returns jsonb
@@ -22,7 +60,7 @@ set search_path = public, private, extensions
 as $$
 declare
   v_url text;
-  v_key text;
+  v_token text;
   v_pending integer;
   v_batch integer;
   v_fanout integer;
@@ -45,8 +83,8 @@ begin
   v_batch := greatest(1, coalesce(v_batch, 2));
 
   select decrypted_secret into v_url from vault.decrypted_secrets where name = 'project_url';
-  select decrypted_secret into v_key from vault.decrypted_secrets where name = 'service_role_key';
-  if v_url is null or v_key is null then
+  select decrypted_secret into v_token from vault.decrypted_secrets where name = 'grading_worker_token';
+  if v_url is null or v_token is null then
     return jsonb_build_object('pending', v_pending, 'error', 'vault_secrets_missing', 'reconcile', v_reconcile);
   end if;
 
@@ -56,10 +94,10 @@ begin
       url := rtrim(v_url, '/') || '/functions/v1/grading-worker',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' || v_key
+        'x-grading-token', v_token
       ),
       body := jsonb_build_object('mode', 'tick', 'limit', v_batch, 'pending', v_pending, 'slot', v_i),
-      timeout_milliseconds := 5000
+      timeout_milliseconds := 15000
     );
   end loop;
 

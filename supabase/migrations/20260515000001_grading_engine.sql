@@ -30,6 +30,7 @@ create schema if not exists private;
 create or replace function private.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -47,7 +48,10 @@ create table if not exists public.grading_config (
   worker_batch integer not null default 2 check (worker_batch between 1 and 10),
   lease_seconds integer not null default 180 check (lease_seconds between 30 and 900),
   max_attempts integer not null default 5 check (max_attempts between 1 and 20),
-  -- Overrides for the engine (models / params); empty = code defaults.
+  -- Overrides for the engine (models / params / provider); empty = code
+  -- defaults. `mock_assignment_ids` (array of assignment ids) makes the
+  -- trigger queue those assignments' jobs with the offline mock provider
+  -- (load tests); only the service role can write this table.
   engine jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
@@ -178,7 +182,8 @@ insert into public.ai_capacity (pool, max_concurrent, description) values
   ('prepare', 8, 'prepare-submission model calls (parse / analyze / plan).'),
   ('evaluate', 10, 'Per-question evaluation calls (grading pass 1).'),
   ('verify', 4, 'Second-pass verification calls.'),
-  ('narrative', 6, 'Report narrative calls.')
+  ('narrative', 6, 'Report narrative calls.'),
+  ('worker', 8, 'Concurrent grading-worker invocations (bounds fan-out from kicks and cron ticks).')
 on conflict (pool) do nothing;
 
 create or replace function public.acquire_ai_slot(
@@ -377,6 +382,32 @@ begin
 end;
 $$;
 
+-- Gives a claimed job back WITHOUT spending an attempt: used when the worker
+-- could not get model capacity in time (not a failure of the job).
+create or replace function public.defer_grading_job(
+  p_job_id uuid,
+  p_worker text,
+  p_delay_seconds integer default 10,
+  p_reason text default 'waiting_capacity'
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.grading_jobs
+  set status = 'queued',
+      stage = left(coalesce(p_reason, 'waiting_capacity'), 60),
+      attempts = greatest(0, attempts - 1),
+      leased_by = null,
+      lease_until = null,
+      run_after = now() + make_interval(secs => greatest(1, least(600, coalesce(p_delay_seconds, 10))))
+  where id = p_job_id and leased_by = p_worker and status = 'running';
+  return found;
+end;
+$$;
+
 -- Queue (or re-queue) grading for an interview. A running job is left alone.
 create or replace function public.requeue_grading(
   p_interview_id uuid,
@@ -446,7 +477,7 @@ begin
   from public.interviews i
   where i.status = 'completed'
     and i.completed_at >= coalesce(v_since, now())
-    and i.completed_at < now() - make_interval(secs => greatest(0, p_min_age_seconds))
+    and i.completed_at <= now() - make_interval(secs => greatest(0, p_min_age_seconds))
     and not exists (select 1 from public.grading_jobs j where j.interview_id = i.id)
   on conflict (interview_id) do nothing;
   get diagnostics v_enqueued = row_count;
@@ -466,7 +497,7 @@ begin
   from public.submissions s
   where s.id = j.submission_id
     and j.status = 'done'
-    and j.finished_at < now() - make_interval(secs => greatest(0, p_min_age_seconds))
+    and j.finished_at <= now() - make_interval(secs => greatest(0, p_min_age_seconds))
     and (
       s.status <> 'report_ready'
       or not exists (select 1 from public.reports r where r.interview_id = j.interview_id and r.status = 'ready')
@@ -700,12 +731,22 @@ as $$
 declare
   v_enabled boolean;
   v_max integer;
+  v_engine jsonb;
+  v_options jsonb;
 begin
   if new.status = 'completed' and old.status is distinct from 'completed' then
-    select queue_enabled, max_attempts into v_enabled, v_max from public.grading_config where id = 1;
+    select queue_enabled, max_attempts, engine into v_enabled, v_max, v_engine
+    from public.grading_config where id = 1;
     if coalesce(v_enabled, true) then
+      v_options := jsonb_build_object('source', 'trigger');
+      if coalesce(v_engine->'mock_assignment_ids', '[]'::jsonb) ? new.assignment_id::text then
+        v_options := v_options || jsonb_build_object(
+          'provider', 'mock',
+          'mock_delay_ms', coalesce((v_engine->>'mock_delay_ms')::integer, 900)
+        );
+      end if;
       insert into public.grading_jobs (interview_id, submission_id, options, max_attempts)
-      values (new.id, new.submission_id, jsonb_build_object('source', 'trigger'), coalesce(v_max, 5))
+      values (new.id, new.submission_id, v_options, coalesce(v_max, 5))
       on conflict (interview_id) do nothing;
     end if;
   end if;
@@ -723,6 +764,7 @@ create or replace function private.grading_error_code(p_error text)
 returns text
 language sql
 immutable
+set search_path = ''
 as $$
   select case
     when p_error is null then null
@@ -792,6 +834,7 @@ revoke all on function public.claim_grading_jobs(text, integer, uuid, integer) f
 revoke all on function public.extend_grading_lease(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.set_grading_stage(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.fail_grading_job(uuid, text, text, integer, boolean) from public, anon, authenticated;
+revoke all on function public.defer_grading_job(uuid, text, integer, text) from public, anon, authenticated;
 revoke all on function public.requeue_grading(uuid, jsonb, integer) from public, anon, authenticated;
 revoke all on function public.reconcile_grading(integer) from public, anon, authenticated;
 revoke all on function public.create_grading_run(uuid, uuid, uuid, text, jsonb, jsonb, jsonb, text) from public, anon, authenticated;
@@ -805,6 +848,7 @@ grant execute on function public.claim_grading_jobs(text, integer, uuid, integer
 grant execute on function public.extend_grading_lease(uuid, text, integer) to service_role;
 grant execute on function public.set_grading_stage(uuid, text, text) to service_role;
 grant execute on function public.fail_grading_job(uuid, text, text, integer, boolean) to service_role;
+grant execute on function public.defer_grading_job(uuid, text, integer, text) to service_role;
 grant execute on function public.requeue_grading(uuid, jsonb, integer) to service_role;
 grant execute on function public.reconcile_grading(integer) to service_role;
 grant execute on function public.create_grading_run(uuid, uuid, uuid, text, jsonb, jsonb, jsonb, text) to service_role;

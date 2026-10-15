@@ -188,13 +188,13 @@ export function createSupabaseStore(sb: Sb): GradingStore {
           user_id: null,
           entity_type: "interview",
           entity_id: args.interviewId,
-          provider: "openai",
-          model: stage,
+          provider: args.models[stage as keyof typeof args.models] === "mock" ? "mock" : "openai",
+          model: args.models[stage as keyof typeof args.models] ?? stage,
           operation: stage === "narrative" ? "generate_report" : "evaluate_answer",
           input_tokens: u.inputTokens,
           output_tokens: u.outputTokens,
           estimated_cost_usd: Math.round(u.estimatedCostUsd * 10000) / 10000,
-          metadata: { grading_run_id: args.runId, stage, calls: u.calls, latency_ms: u.latencyMs },
+          metadata: { grading_run_id: args.runId, stage, calls: u.calls, latency_ms: u.latencyMs, retries: u.retries ?? 0 },
         }));
       if (rows.length) await sb.from("ai_usage_logs").insert(rows);
     },

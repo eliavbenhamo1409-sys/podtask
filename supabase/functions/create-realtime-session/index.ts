@@ -192,10 +192,11 @@ Deno.serve(async (req) => {
 
   // Admission control: one `realtime` capacity slot per interview, held for
   // the whole session (renewed on reconnects, released by complete-interview,
-  // expires on its own). When the pool is full the room gets an explicit
+  // expires on its own after the planned duration + 5 min, so an abandoned
+  // room frees its seat). When the pool is full the room gets an explicit
   // `at_capacity` instead of a secret that would fail mid-conversation.
   // `ai_capacity.realtime.max_concurrent` must reflect the verified OpenAI tier.
-  const slotTtl = (Number(assignment?.interview_duration_minutes) || 12) * 60 + 15 * 60;
+  const slotTtl = (Number(assignment?.interview_duration_minutes) || 12) * 60 + 5 * 60;
   const { data: admission } = await sb.rpc("acquire_ai_slot", {
     p_pool: "realtime",
     p_holder: `interview:${interview.id}`,

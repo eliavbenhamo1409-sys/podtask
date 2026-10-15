@@ -121,6 +121,7 @@ export interface NewRun {
 
 export interface PersistArgs {
   runId: string;
+  models: GradingModels;
   interviewId: string;
   submissionId: string;
   jobId: string | null;
@@ -185,6 +186,8 @@ function emptyUsage(): StageUsage {
 function addUsage(stage: StageUsage, res: ProviderResponse<unknown>, model: string): void {
   stage.calls += 1;
   stage.latencyMs += res.latencyMs;
+  stage.retries = (stage.retries ?? 0) + Math.max(0, res.attempts - 1);
+  if (res.rateLimit) stage.rateLimit = res.rateLimit;
   if (res.usage) {
     stage.inputTokens += res.usage.inputTokens;
     stage.outputTokens += res.usage.outputTokens;
@@ -403,6 +406,7 @@ export async function gradeInterview(store: GradingStore, interviewId: string, o
       const finishedAt = new Date();
       await store.persistResult({
         runId: reusable.id,
+        models,
         interviewId,
         submissionId: bundle.submissionId,
         jobId: opts.jobId ?? null,
@@ -462,11 +466,13 @@ export async function gradeInterview(store: GradingStore, interviewId: string, o
 
   const withSlot = async <T>(pool: Pool, holder: string, fn: () => Promise<T>): Promise<T> => {
     const waitStart = Date.now();
-    for (;;) {
+    // A slot frees as soon as any in-flight call returns, so poll on a short
+    // jittered backoff (0.4 s growing to 2 s) rather than on the lease TTL.
+    for (let attempt = 0; ; attempt++) {
       const r = await gate.acquire(pool, holder, 180);
       if (r.ok) break;
       if (Date.now() - waitStart > maxSlotWait) throw new CapacityError(pool, r.retryAfterSeconds);
-      await sleep(Math.min(5000, Math.max(250, r.retryAfterSeconds * 1000)) * (0.75 + Math.random() * 0.5));
+      await sleep(Math.min(2000, 400 * 1.5 ** attempt) * (0.75 + Math.random() * 0.5));
     }
     try {
       return await fn();
@@ -608,6 +614,7 @@ export async function gradeInterview(store: GradingStore, interviewId: string, o
     const totalMs = finishedAt.getTime() - startedAt.getTime();
     await store.persistResult({
       runId,
+      models,
       interviewId,
       submissionId: bundle.submissionId,
       jobId: opts.jobId ?? null,

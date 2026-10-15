@@ -300,6 +300,10 @@ export interface StageUsage {
   outputTokens: number;
   estimatedCostUsd: number;
   latencyMs: number;
+  /** Retries the provider needed (429 / 5xx / network). */
+  retries?: number;
+  /** Last `x-ratelimit-*` headers OpenAI returned for this stage (the org's real limits). */
+  rateLimit?: Record<string, string> | null;
 }
 
 export interface GradingVersions {

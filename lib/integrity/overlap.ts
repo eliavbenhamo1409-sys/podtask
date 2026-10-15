@@ -62,7 +62,7 @@ const HEBREW_FINALS: Record<string, string> = {
 };
 
 // Hebrew niqqud + cantillation, Arabic harakat / tatweel.
-const DIACRITICS = /[֑-ׇؐ-ًؚ-ٰٟۖ-ۭـ]/g;
+const DIACRITICS = /[\u0591-\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g;
 const WORD_RE = /[\p{L}\p{N}]+(?:['’"״׳-][\p{L}\p{N}]+)*/gu;
 const HEBREW_CLITICS = new Set(["ו", "ה", "ב", "ל", "מ", "ש", "כ"]);
 

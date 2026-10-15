@@ -47,3 +47,18 @@ test("empty quotes and empty turns are handled", () => {
   const [w] = verifyEvidence([{ quote: "fixes the price per ton", criterion: "accuracy" }], []);
   assert.equal(w.verified, false);
 });
+
+test("Arabic: harakat are stripped, letters are kept, and an Arabic quote verifies against a vocalised answer", async () => {
+  const { normalizeToken } = await import("../../supabase/functions/_shared/overlap.ts");
+  // "كَتَبَ" (with fatha) normalises to the bare letters "كتب".
+  assert.equal(normalizeToken("كَتَبَ"), "كتب");
+  // Plain Arabic letters (U+0621-U+064A) must survive normalisation.
+  const letters = "ضريبة الكربون";
+  assert.equal(normalizeToken("ضريبة"), "ضريبة");
+  const arTurns: Turn[] = [
+    { messageId: "a1", content: "ضَرِيبَةُ الكربون تحدد سعرا ثابتا للطن", createdAt: "2026-01-01T00:00:00Z" },
+  ];
+  const [v] = verifyEvidence([{ quote: `${letters} تحدد سعرا ثابتا`, criterion: "accuracy" }], arTurns);
+  assert.equal(v.verified, true);
+  assert.equal(v.messageId, "a1");
+});

@@ -3,15 +3,23 @@
 // Pulls grading jobs from `grading_jobs` (atomic claim with a lease) and runs
 // the grading engine (`_shared/grading/pipeline.ts`) for each one. Invoked:
 //   - by `complete-interview` right after an interview is completed (kick,
-//     `{ interviewId }`), so the student does not wait for the next tick;
-//   - by pg_cron every 10 s through pg_net (`{ mode: "tick", limit }`), which
-//     is the delivery guarantee: anything the kick missed, a crashed worker
-//     left behind (expired lease) or a failed attempt (backoff) is retried.
+//     `{ interviewId }`, bearer = the service-role key), so the student does
+//     not wait for the next tick;
+//   - by pg_cron every 10 s through pg_net (`{ mode: "tick", limit }`, header
+//     `x-grading-token` = the Vault token), which is the delivery guarantee:
+//     anything the kick missed, a crashed worker left behind (expired lease)
+//     or a failed attempt (backoff) is retried.
 //
-// Service role only: the gateway verifies the JWT signature, this function
-// verifies the role claim. Every write is idempotent (unique job per
-// interview, run snapshots, report upsert), so a redelivered job never
-// produces a second report or a different score for the same input.
+// Deployed with verify_jwt = false: authentication is done here, strictly
+// (exact service-role key, or the Vault token checked in the database).
+// Every write is idempotent (unique job per interview, run snapshots, report
+// upsert), so a redelivered job never produces a second report or a
+// different score for the same input.
+//
+// Concurrency: one `worker` capacity slot per invocation (pool size in
+// `ai_capacity`); when the pool is full the invocation returns at once and
+// the job waits for the next tick. Model calls are bounded by the
+// `evaluate` / `verify` / `narrative` pools inside the pipeline.
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 import { OPENAI_KEY_NAME } from "../_shared/openai.ts";
@@ -24,6 +32,7 @@ declare const Deno: {
   serve: (h: (req: Request) => Response | Promise<Response>) => void;
   env: { get(key: string): string | undefined };
 };
+declare const EdgeRuntime: { waitUntil?: (p: Promise<unknown>) => void } | undefined;
 
 const DEFAULT_LIMIT = 2;
 const HEARTBEAT_MS = 45_000;
@@ -45,40 +54,46 @@ interface GradingConfigRow {
   engine: { models?: Partial<GradingModels>; params?: Partial<GradingParams>; provider?: string } | null;
 }
 
-/** True when the bearer token is the project's service-role JWT. */
-function isServiceRole(req: Request): boolean {
-  const auth = req.headers.get("Authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return false;
+type Sb = ReturnType<typeof serviceClient>;
+
+async function authorized(req: Request, sb: Sb): Promise<boolean> {
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (serviceKey && token === serviceKey) return true;
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  try {
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return payload?.role === "service_role";
-  } catch {
-    return false;
-  }
+  if (bearer && serviceKey && bearer === serviceKey) return true;
+  const token = req.headers.get("x-grading-token");
+  if (!token) return false;
+  const { data, error } = await sb.rpc("check_grading_worker_token", { p_token: token });
+  return !error && data === true;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return errorResponse("method_not_allowed", 405);
-  if (!isServiceRole(req)) return errorResponse("forbidden", 403);
+
+  const sb = serviceClient();
+  if (!(await authorized(req, sb))) return errorResponse("forbidden", 403);
 
   const body = (await req.json().catch(() => ({}))) as { interviewId?: unknown; limit?: unknown; mode?: unknown };
   const interviewId = typeof body.interviewId === "string" && /^[0-9a-f-]{36}$/i.test(body.interviewId) ? body.interviewId : null;
-
-  const sb = serviceClient();
   const workerId = `edge:${crypto.randomUUID().slice(0, 8)}`;
+
   const { data: configRow } = await sb
     .from("grading_config")
     .select("queue_enabled, worker_batch, lease_seconds, engine")
     .eq("id", 1)
     .maybeSingle();
   const config = (configRow ?? { queue_enabled: true, worker_batch: DEFAULT_LIMIT, lease_seconds: 180, engine: {} }) as GradingConfigRow;
-  if (!config.queue_enabled) return jsonResponse({ ok: true, worker: workerId, processed: [], disabled: true });
+  if (!config.queue_enabled) return jsonResponse({ ok: true, worker: workerId, claimed: [], disabled: true });
+
+  // One worker slot per invocation; full pool = let the next tick handle it.
+  const { data: slot } = await sb.rpc("acquire_ai_slot", {
+    p_pool: "worker",
+    p_holder: workerId,
+    p_ttl_seconds: config.lease_seconds + 60,
+  });
+  if (slot && slot.ok === false) {
+    return jsonResponse({ ok: true, worker: workerId, claimed: [], skipped: "worker_pool_full" });
+  }
 
   const limit = interviewId ? 1 : Math.max(1, Math.min(10, Number(body.limit) || config.worker_batch || DEFAULT_LIMIT));
   const { data: jobs, error: claimError } = await sb.rpc("claim_grading_jobs", {
@@ -87,19 +102,35 @@ Deno.serve(async (req) => {
     p_interview_id: interviewId,
     p_lease_seconds: config.lease_seconds,
   });
-  if (claimError) return errorResponse(`claim_failed:${claimError.message}`, 500);
+  if (claimError) {
+    await sb.rpc("release_ai_slot", { p_pool: "worker", p_holder: workerId });
+    return errorResponse(`claim_failed:${claimError.message}`, 500);
+  }
   const claimed = (jobs ?? []) as JobRow[];
-  if (claimed.length === 0) return jsonResponse({ ok: true, worker: workerId, processed: [] });
+  if (claimed.length === 0) {
+    await sb.rpc("release_ai_slot", { p_pool: "worker", p_holder: workerId });
+    return jsonResponse({ ok: true, worker: workerId, claimed: [] });
+  }
 
   const store = createSupabaseStore(sb);
   const gate = createSupabaseGate(sb, (event, data) => console.warn(event, data));
   const engine = config.engine ?? {};
+  const work = Promise.all(claimed.map((job) => processJob(sb, store, gate, workerId, job, engine, config.lease_seconds)))
+    .then((results) => {
+      console.log(JSON.stringify({ event: "worker.done", worker: workerId, results }));
+      return results;
+    })
+    .finally(() => Promise.resolve(sb.rpc("release_ai_slot", { p_pool: "worker", p_holder: workerId })).catch(() => {}));
 
-  const results = await Promise.all(claimed.map((job) => processJob(sb, store, gate, workerId, job, engine, config.lease_seconds)));
-  return jsonResponse({ ok: true, worker: workerId, processed: results });
+  // Answer at once and grade in the background when the runtime allows it,
+  // so neither pg_net nor complete-interview holds a connection open.
+  if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime?.waitUntil === "function") {
+    EdgeRuntime.waitUntil(work);
+    return jsonResponse({ ok: true, worker: workerId, claimed: claimed.map((j) => j.interview_id), background: true }, 202);
+  }
+  const processed = await work;
+  return jsonResponse({ ok: true, worker: workerId, processed });
 });
-
-type Sb = ReturnType<typeof serviceClient>;
 
 async function processJob(
   sb: Sb,
@@ -111,10 +142,11 @@ async function processJob(
   leaseSeconds: number,
 ): Promise<Record<string, unknown>> {
   const options = (job.options ?? {}) as { provider?: string; force?: boolean; mock_delay_ms?: number };
-  const providerName = options.provider === "mock" ? "mock" : engine.provider === "mock" ? "mock" : "openai";
+  const providerName = options.provider === "mock" || engine.provider === "mock" ? "mock" : "openai";
   const started = Date.now();
   const heartbeat = setInterval(() => {
     Promise.resolve(sb.rpc("extend_grading_lease", { p_job_id: job.id, p_worker: workerId, p_seconds: leaseSeconds })).catch(() => {});
+    Promise.resolve(sb.rpc("acquire_ai_slot", { p_pool: "worker", p_holder: workerId, p_ttl_seconds: leaseSeconds + 60 })).catch(() => {});
   }, HEARTBEAT_MS);
 
   const log = (event: string, data?: Record<string, unknown>) => {
@@ -142,6 +174,7 @@ async function processJob(
       force: options.force === true,
       models: engine.models,
       params: engine.params,
+      maxSlotWaitMs: 150_000,
       log,
     });
     clearInterval(heartbeat);
@@ -149,6 +182,7 @@ async function processJob(
       job: job.id,
       interview: job.interview_id,
       ok: true,
+      provider: providerName,
       runId: result.runId,
       reused: result.reused,
       overall: result.final.overallScore,
@@ -158,14 +192,25 @@ async function processJob(
   } catch (err) {
     clearInterval(heartbeat);
     const message = err instanceof Error ? err.message : String(err);
+
+    // Waiting for model capacity is not a failure of the job: hand it back
+    // without spending an attempt; the run stays resumable.
+    if (err instanceof CapacityError) {
+      await sb.rpc("defer_grading_job", {
+        p_job_id: job.id,
+        p_worker: workerId,
+        p_delay_seconds: Math.max(5, Math.min(60, err.retryAfterSeconds)),
+        p_reason: "waiting_capacity",
+      });
+      return { job: job.id, interview: job.interview_id, ok: false, deferred: true, ms: Date.now() - started };
+    }
+
     let retryAfter: number | null = null;
     let dead = false;
-    if (err instanceof CapacityError) {
-      retryAfter = Math.max(5, err.retryAfterSeconds);
-    } else if (err instanceof ProviderError) {
+    if (err instanceof ProviderError) {
       if (err.status === 429) retryAfter = Math.max(10, Math.ceil((err.retryAfterMs ?? 20_000) / 1000));
       else if (!err.retryable) dead = true;
-    } else if (/^(interview_not_found|plan_missing|missing_secret_)/.test(message)) {
+    } else if (/^(interview_not_found|missing_secret_)/.test(message)) {
       dead = true;
     }
     const { data: status } = await sb.rpc("fail_grading_job", {

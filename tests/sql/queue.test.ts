@@ -17,7 +17,7 @@ test("migration applies on a clean schema and seeds config + capacity pools", as
   const pools = await db.query<{ pool: string; max_concurrent: number }>("select pool, max_concurrent from public.ai_capacity order by pool");
   assert.deepEqual(
     pools.rows.map((p) => p.pool),
-    ["evaluate", "narrative", "prepare", "realtime", "verify"],
+    ["evaluate", "narrative", "prepare", "realtime", "verify", "worker"],
   );
 });
 
@@ -42,6 +42,38 @@ test("outbox trigger respects grading_config.queue_enabled", async () => {
   // The reconciler picks it up (completed after reconcile_since, older than min age 0).
   const r = await rpc<{ enqueued: number }>(db, "public.reconcile_grading", { p_min_age_seconds: 0 });
   assert.equal(r.enqueued, 1);
+});
+
+test("trigger routes listed load-test assignments to the mock provider, everything else to the default", async () => {
+  const listed = await seedInterview(db);
+  const normal = await seedInterview(db);
+  await db.query("update public.grading_config set engine = jsonb_build_object('mock_assignment_ids', jsonb_build_array($1::text), 'mock_delay_ms', 250) where id = 1", [listed.assignmentId]);
+  await completeInterview(db, listed.interviewId);
+  await completeInterview(db, normal.interviewId);
+  const a = await one<{ options: Record<string, unknown> }>(db, "select options from public.grading_jobs where interview_id = $1", [listed.interviewId]);
+  const b = await one<{ options: Record<string, unknown> }>(db, "select options from public.grading_jobs where interview_id = $1", [normal.interviewId]);
+  assert.deepEqual(a.options, { source: "trigger", provider: "mock", mock_delay_ms: 250 });
+  assert.deepEqual(b.options, { source: "trigger" });
+  await db.query("update public.grading_config set engine = '{}'::jsonb where id = 1");
+});
+
+test("defer: a capacity wait hands the job back without spending an attempt", async () => {
+  const seed = await seedInterview(db);
+  await completeInterview(db, seed.interviewId);
+  const job = (await db.query<{ id: string; attempts: number }>("select id, attempts from public.claim_grading_jobs($1, 1, $2, 60)", ["w1", seed.interviewId])).rows[0];
+  assert.equal(job.attempts, 1);
+  assert.equal(await rpc(db, "public.defer_grading_job", { p_job_id: job.id, p_worker: "w2", p_delay_seconds: 10, p_reason: "waiting_capacity" }), false, "only the lease holder can defer");
+  assert.equal(await rpc(db, "public.defer_grading_job", { p_job_id: job.id, p_worker: "w1", p_delay_seconds: 10, p_reason: "waiting_capacity" }), true);
+  const row = await one<{ status: string; attempts: number; stage: string; leased_by: string | null; run_after: Date }>(
+    db,
+    "select status, attempts, stage, leased_by, run_after from public.grading_jobs where id = $1",
+    [job.id],
+  );
+  assert.equal(row.status, "queued");
+  assert.equal(row.attempts, 0);
+  assert.equal(row.stage, "waiting_capacity");
+  assert.equal(row.leased_by, null);
+  assert.ok(row.run_after.getTime() - Date.now() > 8000);
 });
 
 test("claim: a job is handed to one worker only; a second claim gets nothing until the lease expires", async () => {
