@@ -226,7 +226,10 @@ Feature flags live in `assignments.settings.integrity` and are resolved by
 `resolveIntegritySettings` (camera off/on/required, activity monitoring,
 silence nudge seconds, overlap check, host flags, per-answer evaluation,
 consent). Personal (self-initiated) assignments default to no camera and no
-activity telemetry.
+activity telemetry, except for guest (demo) accounts: a guest gets the
+lecturer defaults even on the PERSONAL course, because the guest path is where
+the whole integrity flow is exercised while there are no real users
+(`isGuestIdentity`, resolved identically by the app and `interview-control`).
 
 ### Exam integrity layer (2026-10-16): tab monitoring + camera proctoring
 

@@ -11,6 +11,9 @@
  *     flags, per-answer evaluation, consent screen.
  *   - personal (self-initiated) assignments: no camera, no activity
  *     telemetry; the conversational features stay on.
+ *   - guest (one-shot demo) accounts: the lecturer defaults, even on the
+ *     PERSONAL course. There are no real lecturers or students yet, so the
+ *     guest path is where the whole flow is exercised (`isGuestIdentity`).
  */
 
 export type CameraMode = "off" | "on" | "required";
@@ -49,6 +52,26 @@ export function isPersonalCourseCode(code: string | null | undefined): boolean {
   return (code ?? "").trim().toUpperCase() === PERSONAL_COURSE_CODE;
 }
 
+const GUEST_EMAIL_RE = /@guest\.podtask\.(app|local)$/i;
+
+/**
+ * A guest is the one-shot account minted by `create-guest-session`
+ * (`user_metadata.is_guest`, e-mail on guest.podtask.app) or the older
+ * anonymous `anon-…` profile. Accepts an auth user, JWT claims or a bare
+ * profile e-mail.
+ */
+export function isGuestIdentity(
+  identity:
+    | { email?: string | null; metadata?: Record<string, unknown> | null }
+    | null
+    | undefined,
+): boolean {
+  if (!identity) return false;
+  if (identity.metadata && identity.metadata.is_guest === true) return true;
+  const email = (identity.email ?? "").trim();
+  return GUEST_EMAIL_RE.test(email) || /^anon-/i.test(email);
+}
+
 function asBool(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -66,10 +89,12 @@ function asNudgeSeconds(value: unknown, fallback: number): number {
 /**
  * @param rawSettings  the `assignments.settings` jsonb (or null)
  * @param ctx.personal true for the per-institution PERSONAL course
+ * @param ctx.guest    true for a guest (demo) account: the lecturer defaults
+ *                     apply even on the PERSONAL course
  */
 export function resolveIntegritySettings(
   rawSettings: unknown,
-  ctx: { personal: boolean },
+  ctx: { personal: boolean; guest?: boolean },
 ): IntegritySettings {
   const settings =
     rawSettings && typeof rawSettings === "object"
@@ -79,7 +104,7 @@ export function resolveIntegritySettings(
     settings.integrity && typeof settings.integrity === "object"
       ? (settings.integrity as Record<string, unknown>)
       : {};
-  const personal = ctx.personal;
+  const personal = ctx.personal && ctx.guest !== true;
   return {
     camera: asCamera(raw.camera, personal ? "off" : "required"),
     headPose: asBool(raw.head_pose, true),

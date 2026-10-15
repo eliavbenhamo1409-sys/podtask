@@ -23,6 +23,7 @@
 import { CORS_HEADERS, errorResponse, jsonResponse } from "../_shared/cors.ts";
 import { serviceClient, userClient } from "../_shared/supabase.ts";
 import {
+  isGuestIdentity,
   isPersonalCourseCode,
   resolveIntegritySettings,
   type IntegritySettings,
@@ -103,7 +104,10 @@ Deno.serve(async (req) => {
   const courseRaw = assignment?.course;
   const course = Array.isArray(courseRaw) ? courseRaw[0] : courseRaw;
   const personal = isPersonalCourseCode(course?.code);
-  const settings = resolveIntegritySettings(assignment?.settings, { personal });
+  // A guest (demo) account gets the lecturer defaults even on its personal
+  // assignment: that is the path used to exercise the whole integrity flow.
+  const guest = isGuestIdentity({ email: auth.email, metadata: auth.userMetadata });
+  const settings = resolveIntegritySettings(assignment?.settings, { personal, guest });
 
   switch (action) {
     case "consent":

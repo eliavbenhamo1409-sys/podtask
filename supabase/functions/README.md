@@ -43,7 +43,7 @@ its own copy of the shared files). Never redeploy for comment-only changes.
 | Slug | Deployed version | Matches repo? |
 | --- | --- | --- |
 | prepare-submission | v6 (2026-10-14) | yes — question pool + seeded selection, raw document text |
-| interview-control | v3 (2026-10-16) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required` |
+| interview-control | v4 (2026-10-15) | yes — event engine (event_id dedupe, open/close with one select for still-open intervals), camera_exemption, camera default `required`, guest accounts get the lecturer integrity defaults (`isGuestIdentity`) |
 | create-realtime-session | v15 (2026-10-14) | **no — repo adds the `realtime` admission check (grading engine v2); deploy after migration 20260515000001** |
 | save-interview-message | v5 (2026-10-14) | yes — status guard, timing metadata, clientId dedupe |
 | evaluate-answer | v4 (2026-10-14) | **no — repo is the re-queue wrapper (v2 engine)** |
@@ -70,11 +70,15 @@ its own copy of the shared files). Never redeploy for comment-only changes.
    the previous function versions or set `GRADING_LEGACY_SYNC=1` on
    `complete-interview`.
 
-Note (2026-10-16): `_shared/integrity-settings.ts` changed (camera default
-`required`, `headPose`). Only `interview-control` v2 carries the new copy;
-`create-realtime-session`, `complete-interview` and `prepare-submission`
-still bundle the old one, which is harmless for them (they do not read
-`camera` / `headPose`) but means their next deploy picks up the change.
+Note (2026-10-16, 2026-10-15): `_shared/integrity-settings.ts` changed twice
+(camera default `required` + `headPose`; then `isGuestIdentity` and the
+`guest` flag of `resolveIntegritySettings`, which gives guest accounts the
+lecturer defaults). Only `interview-control` v4 carries the current copy, and
+`_shared/supabase.ts`'s `userClient` now also returns `email` + `userMetadata`.
+`create-realtime-session`, `complete-interview` and `prepare-submission` still
+bundle the old copies, which is harmless for them (they only read the
+conversational flags, which are on for everyone) but means their next deploy
+picks up the change.
 
 History: on 2026-10-01 the deployed v12 of `create-realtime-session` and v5 of
 `generate-report` had drifted from the repo (condensed prompt, two extra scoring

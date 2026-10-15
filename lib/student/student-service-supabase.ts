@@ -30,6 +30,7 @@ import type {
   SubmissionStatus,
 } from "./status";
 import {
+  isGuestIdentity,
   isPersonalCourseCode,
   resolveIntegritySettings,
   type IntegritySettings,
@@ -128,6 +129,27 @@ async function currentUserIdSb(sb: SbClient): Promise<string | null> {
   return typeof sub === "string" && sub.length > 0 ? sub : null;
 }
 
+/**
+ * Same local JWT read, plus whether this is a guest (demo) account. Guests
+ * get the lecturer integrity defaults even on their personal assignment,
+ * the way `interview-control` resolves them for the room.
+ */
+async function currentIdentitySb(
+  sb: SbClient,
+): Promise<{ userId: string; guest: boolean } | null> {
+  const { data } = await sb.auth.getClaims();
+  const claims = data?.claims;
+  const sub = claims?.sub;
+  if (typeof sub !== "string" || sub.length === 0) return null;
+  return {
+    userId: sub,
+    guest: isGuestIdentity({
+      email: typeof claims?.email === "string" ? claims.email : null,
+      metadata: (claims?.user_metadata as Record<string, unknown> | undefined) ?? null,
+    }),
+  };
+}
+
 function deriveBadge(
   s: StudentAssignmentStatus,
 ): "next" | "todo" | "done" {
@@ -222,8 +244,9 @@ async function loadAssignmentsSb(
   sb: SbClient,
   opts: { assignmentId?: string } = {},
 ): Promise<StudentAssignment[]> {
-  const userId = await currentUserIdSb(sb);
-  if (!userId) return [];
+  const identity = await currentIdentitySb(sb);
+  if (!identity) return [];
+  const userId = identity.userId;
 
   type AssignmentRow = {
     id: string;
@@ -337,6 +360,7 @@ async function loadAssignmentsSb(
       badgeKind: deriveBadge(status),
       integrity: resolveIntegritySettings(a.settings, {
         personal: isPersonalCourseCode(course?.code),
+        guest: identity.guest,
       }),
     } satisfies StudentAssignment;
   });

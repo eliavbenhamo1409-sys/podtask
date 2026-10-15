@@ -24,5 +24,10 @@ export async function userClient(req: Request) {
   );
   const { data } = await sb.auth.getUser();
   if (!data.user) return null;
-  return { sb, userId: data.user.id };
+  return {
+    sb,
+    userId: data.user.id,
+    email: data.user.email ?? null,
+    userMetadata: (data.user.user_metadata ?? null) as Record<string, unknown> | null,
+  };
 }

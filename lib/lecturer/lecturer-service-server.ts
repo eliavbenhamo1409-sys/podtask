@@ -477,6 +477,7 @@ export const getLecturerInterviewReport = cache(async function getLecturerInterv
       courseCode: course?.code ?? "",
       integrity: resolveIntegritySettings(assignment?.settings, {
         personal: isPersonalCourseCode(course?.code),
+        guest: isGuestEmail(email),
       }),
     },
     questions,
