@@ -15,6 +15,16 @@ export interface Crumb {
 // Titles that should not become an initial ("ד״ר נועה לוי" -> "נל").
 const HONORIFIC = /^(ד["״'׳]?ר|פרופ['׳]?|פרופסור|dr\.?|prof\.?|mr\.?|mrs\.?|ms\.?)$/i;
 
+/** First name for a greeting, skipping academic titles ("ד״ר נועה לוי" -> "נועה"). */
+export function firstNameOf(name: string): string {
+  return (
+    name
+      .split(/[\s/]+/)
+      .filter(Boolean)
+      .find((w) => !HONORIFIC.test(w)) ?? ""
+  );
+}
+
 /** Up to two initials from a person's name, skipping academic titles. */
 export function initialsOf(name: string): string {
   const words = name

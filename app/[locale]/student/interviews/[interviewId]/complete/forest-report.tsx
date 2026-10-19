@@ -125,7 +125,7 @@ export function ForestReport({
       : head.personal
         ? t("subReadyPersonal")
         : t("subReady")
-    : failed
+    : failed || timedOut
       ? t("subSaved")
       : t("subScoring");
 

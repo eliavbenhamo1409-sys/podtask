@@ -151,7 +151,17 @@ export async function ForestLobby({
                   <span className="fp-check-mark" aria-hidden="true">
                     {c.done ? <CheckIcon size={13} /> : null}
                   </span>
-                  <span>{t(c.key)}</span>
+                  <span>
+                    {t(c.key)}
+                    <span className="sr-only">
+                      {", "}
+                      {c.done
+                        ? t("checkStateDone")
+                        : failed
+                          ? t("checkStateWarn")
+                          : t("checkStatePending")}
+                    </span>
+                  </span>
                 </li>
               ))}
             </ul>

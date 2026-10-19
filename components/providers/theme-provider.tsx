@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   THEME_COOKIE,
   THEME_COOKIE_MAX_AGE,
+  isLiveRoomPath,
   isThemeId,
   type ThemeId,
 } from "@/lib/theme/config";
@@ -26,6 +27,7 @@ const ThemeContext = createContext<ThemeContextValue>({
  * refreshes the server components (layout differences follow).
  *
  * `?theme=<id>` in any URL switches too, which makes a theme easy to share.
+ * The live interview room is never refreshed or switched (see isLiveRoomPath).
  */
 export function ThemeProvider({ initial, children }: { initial: ThemeId; children: ReactNode }) {
   const router = useRouter();
@@ -42,7 +44,7 @@ export function ThemeProvider({ initial, children }: { initial: ThemeId; childre
     (next: ThemeId) => {
       document.cookie = `${THEME_COOKIE}=${next}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; SameSite=Lax`;
       document.documentElement.dataset.theme = next;
-      router.refresh();
+      if (!isLiveRoomPath(window.location.pathname)) router.refresh();
     },
     [router],
   );
@@ -58,10 +60,34 @@ export function ThemeProvider({ initial, children }: { initial: ThemeId; childre
   useEffect(() => {
     // `?theme=` only on first load; the state follows through `initial`
     // once the refresh lands. Later navigations keep the visitor's pick.
+    if (isLiveRoomPath(window.location.pathname)) return;
     const fromUrl = new URLSearchParams(window.location.search).get("theme");
     if (isThemeId(fromUrl) && fromUrl !== initial) applyTheme(fromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // Another tab may have switched the theme (same cookie): catch up when
+    // this tab is shown again, so its client and server parts never mix.
+    const sync = () => {
+      if (document.visibilityState !== "visible") return;
+      if (isLiveRoomPath(window.location.pathname)) return;
+      const fromCookie = document.cookie
+        .split("; ")
+        .find((c) => c.startsWith(`${THEME_COOKIE}=`))
+        ?.slice(THEME_COOKIE.length + 1);
+      if (!isThemeId(fromCookie) || fromCookie === theme) return;
+      document.documentElement.dataset.theme = fromCookie;
+      setThemeState(fromCookie);
+      router.refresh();
+    };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [theme, router]);
 
   const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

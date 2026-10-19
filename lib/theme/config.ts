@@ -34,3 +34,12 @@ export const THEME_SWATCH: Record<ThemeId, [string, string]> = {
   classic: ["#E0F2FE", "#0EA5E9"],
   forest: ["#F6F5F0", "#1F5C4A"],
 };
+
+/**
+ * The live interview room starts (or resumes) the interview on the server
+ * render, so a refresh there would count a new attempt and reconnect the
+ * voice session. Theme changes never refresh it and never apply mid-room.
+ */
+export function isLiveRoomPath(pathname: string): boolean {
+  return /^\/(he|en)\/student\/interviews\/[^/]+\/?$/.test(pathname);
+}

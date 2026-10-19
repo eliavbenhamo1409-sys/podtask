@@ -1765,7 +1765,8 @@ export function InterviewRoomClient({
             ) : null}
           </div>
           <div className="fr-top-end">
-            <span className="fr-top-time" aria-label={t("forestRoom.timeLabel")}>
+            <span className="fr-top-time">
+              <span className="sr-only">{t("forestRoom.timeLabel")} </span>
               {formatTime(elapsed)}
             </span>
             <span className="tb-divider" aria-hidden />

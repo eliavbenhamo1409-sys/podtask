@@ -76,7 +76,7 @@ export function FileDropzone({
         selected={selected}
         progress={progress}
         uploading={uploading}
-        onReplace={() => onFile(null)}
+        onRemove={() => onFile(null)}
       />
     );
   }
@@ -174,7 +174,11 @@ export function FileDropzone({
         style={forest ? { cursor: "pointer" } : { marginTop: 32, cursor: "pointer" }}
         role="button"
         tabIndex={0}
-        aria-label={`${t("upload.dropHere")}, ${t("upload.orClick")}`}
+        aria-label={
+          forest
+            ? `${t("forestJourney.upload.drop")}, ${t("forestJourney.upload.choose")}`
+            : `${t("upload.dropHere")}, ${t("upload.orClick")}`
+        }
         onClick={() => inputRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -297,17 +301,20 @@ export function FileDropzone({
   );
 }
 
-/** Forest theme: the chosen file as one row with its upload state and a replace link. */
+/**
+ * Forest theme: the chosen file as one row with its upload state and a link
+ * that removes it (the dropzone comes back, so another file can be chosen).
+ */
 function ForestSelectedFile({
   selected,
   progress,
   uploading,
-  onReplace,
+  onRemove,
 }: {
   selected: SelectedFile;
   progress: number;
   uploading: boolean;
-  onReplace: () => void;
+  onRemove: () => void;
 }) {
   const t = useTranslations();
   const done = progress >= 100;
@@ -341,9 +348,9 @@ function ForestSelectedFile({
         type="button"
         className="jr-link"
         disabled={uploading}
-        onClick={onReplace}
+        onClick={onRemove}
       >
-        {t("forestJourney.upload.replace")}
+        {t("forestJourney.upload.remove")}
       </button>
     </motion.div>
   );

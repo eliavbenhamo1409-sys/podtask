@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useTheme } from "@/components/providers/theme-provider";
 import { THEMES, THEME_SWATCH, type ThemeId } from "@/lib/theme/config";
 import { CheckIcon } from "@/components/podtask/icons";
+import { rememberThemeFocus, takeThemeFocus } from "@/components/podtask/theme-switcher";
 
 /**
  * Theme cards for the profile page: a radio group (arrow keys move and pick),
@@ -15,8 +16,16 @@ export function ThemeChooser() {
   const { theme, setTheme } = useTheme();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
+  // The profile page re-renders in the new theme: keep focus on the choice.
+  useEffect(() => {
+    if (takeThemeFocus("chooser")) refs.current[THEMES.indexOf(theme)]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pick = (id: ThemeId) => {
-    if (id !== theme) setTheme(id);
+    if (id === theme) return;
+    rememberThemeFocus("chooser");
+    setTheme(id);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {

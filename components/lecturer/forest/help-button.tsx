@@ -32,6 +32,8 @@ export function ForestHelpButton() {
       <button
         type="button"
         className="lxf-help-btn"
+        aria-label={t("help")}
+        title={t("help")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}

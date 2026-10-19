@@ -222,7 +222,11 @@ export function NewAssignmentForm({ courseId, courseName }: NewAssignmentFormPro
             <div className="lxf-preview-card">
               <div className="lxf-preview-course">{courseName}</div>
               <div className="lxf-preview-title">{title.trim() || f("previewUntitled")}</div>
-              {description.trim() ? <p className="lxf-preview-desc">{description.trim()}</p> : null}
+              {instructions.trim() ? (
+                <p className="lxf-preview-desc" dir="auto">
+                  {instructions.trim()}
+                </p>
+              ) : null}
               <ol className="lxf-preview-steps">
                 <li>
                   <span className="lxf-preview-n">1</span>

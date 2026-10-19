@@ -996,24 +996,26 @@ export function MicTestClient({
         {forest ? (
           <ForestReadyCard
             mic={perm === "permission_granted" ? "done" : "pending"}
-            test={recorded ? (silent ? "warn" : "done") : "pending"}
+            test={
+              recorded ? (silent ? "silent" : "done") : unsupported ? "unsupported" : "pending"
+            }
             camera={
               cameraMode === "off"
                 ? null
                 : {
-                    state:
+                    check:
                       exemptionState === "done"
-                        ? "done"
+                        ? cam === "on"
+                          ? "done"
+                          : "exempt"
                         : cam === "on"
                           ? camSignal === "none"
-                            ? "warn"
+                            ? "noSignal"
                             : "done"
                           : cam === "denied" || cam === "unavailable"
-                            ? "warn"
+                            ? cam
                             : "pending",
                     optional: cameraMode !== "required",
-                    exemptLabel:
-                      exemptionState === "done" && cam !== "on" ? t("micTest.exemptionDone") : null,
                   }
             }
             questionCount={questionCount}

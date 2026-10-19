@@ -11,6 +11,7 @@ import { AssignmentStatusBadge } from "@/components/lecturer/assignment-status-b
 import { getLecturerDashboard } from "@/lib/lecturer/lecturer-service-server";
 import { getTheme } from "@/lib/theme/server";
 import { ForestDashboard } from "@/components/lecturer/forest/dashboard";
+import { firstNameOf } from "@/components/lecturer/forest/util";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -52,7 +53,7 @@ export default async function LecturerDashboardPage({ params }: PageProps) {
           <div>
             <Eyebrow showDot>{t("lecturer.brand")}</Eyebrow>
             <h1 className="display" style={{ marginTop: 10 }}>
-              {t("lecturer.dashboardTitle", { name: dashboard.profile.fullName.split(/[\s/]+/)[0] ?? "" })}
+              {t("lecturer.dashboardTitle", { name: firstNameOf(dashboard.profile.fullName) })}
             </h1>
             <p className="subtitle" style={{ maxWidth: 620 }}>
               {t("lecturer.dashboardSubtitle")}

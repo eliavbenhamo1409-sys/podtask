@@ -186,19 +186,22 @@
   margin: 0;
   padding: 0;
 }
+/* Each fact is <div><dt>icon + label</dt><dd>value</dd></div> (valid dl
+   markup); the icon hangs in the start gutter so dt/dd stack beside it. */
 [data-theme="forest"] .jr-fact {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 22px 24px;
+  position: relative;
+  padding-block: 22px;
+  /* 24px edge + 22px icon + 14px gap */
+  padding-inline: 60px 24px;
   min-width: 0;
 }
 [data-theme="forest"] .jr-fact + .jr-fact {
   border-inline-start: 1px solid rgb(var(--line));
 }
-[data-theme="forest"] .jr-fact > svg {
-  flex: none;
-  margin-top: 1px;
+[data-theme="forest"] .jr-fact dt > svg {
+  position: absolute;
+  top: 23px;
+  inset-inline-start: 24px;
   color: rgb(var(--cyan));
 }
 [data-theme="forest"] .jr-fact dt {

@@ -351,9 +351,22 @@ export function ForestMicFooter({
 
 export type ReadyState = "done" | "pending" | "warn";
 
+/** The test-recording row. "unsupported": no MediaRecorder, the gate is waived. */
+export type ReadyTest = "pending" | "done" | "silent" | "unsupported";
+
+/** The camera row. "exempt": an exemption was recorded and the camera is not on. */
+export type ReadyCamera = "pending" | "done" | "noSignal" | "denied" | "unavailable" | "exempt";
+
+const STATE_TEXT_KEY = {
+  done: "checkStateDone",
+  pending: "checkStatePending",
+  warn: "checkStateWarn",
+} as const satisfies Record<ReadyState, string>;
+
 /**
  * What is checked so far (from the live recorder / camera state) and what the
- * conversation will be (from the interview plan). Nothing here is assumed.
+ * conversation will be (from the interview plan). Nothing here is assumed:
+ * each row's label follows its state, so a failed check never reads as passed.
  */
 export function ForestReadyCard({
   mic,
@@ -364,27 +377,54 @@ export function ForestReadyCard({
   language,
 }: {
   mic: ReadyState;
-  test: ReadyState;
-  camera: { state: ReadyState; optional: boolean; exemptLabel: string | null } | null;
+  test: ReadyTest;
+  camera: { check: ReadyCamera; optional: boolean } | null;
   questionCount: number;
   minutes: number;
   language: InterviewLanguage | null;
 }) {
-  const t = useTranslations("forestPrep");
+  const t = useTranslations();
   const rows: { key: string; label: string; state: ReadyState }[] = [
-    { key: "mic", label: t("readyMic"), state: mic },
-    { key: "test", label: t("readyTest"), state: test },
+    { key: "mic", label: t("forestPrep.readyMic"), state: mic },
   ];
+  // Without MediaRecorder there is nothing to record; the start gate waives
+  // the test (the mic card says so), so the row is dropped rather than left pending.
+  if (test !== "unsupported") {
+    rows.push(
+      test === "silent"
+        ? { key: "test", label: t("forestPrep.readyTestSilent"), state: "warn" }
+        : { key: "test", label: t("forestPrep.readyTest"), state: test },
+    );
+  }
   if (camera) {
-    rows.push({
-      key: "cam",
-      label: camera.exemptLabel ?? (camera.optional ? t("readyCamOptional") : t("readyCam")),
-      state: camera.state,
-    });
+    const { check, optional } = camera;
+    const problem =
+      check === "noSignal"
+        ? t("micTest.cameraNoSignal")
+        : check === "denied"
+          ? t("micTest.cameraDenied")
+          : check === "unavailable"
+            ? t("micTest.cameraUnavailable")
+            : null;
+    rows.push(
+      check === "exempt"
+        ? { key: "cam", label: t("micTest.exemptionDone"), state: "done" }
+        : problem
+          ? {
+              key: "cam",
+              label: optional ? t("forestPrep.readyOptional", { label: problem }) : problem,
+              state: "warn",
+            }
+          : {
+              key: "cam",
+              label: optional ? t("forestPrep.readyCamOptional") : t("forestPrep.readyCam"),
+              state: check === "done" ? "done" : "pending",
+            },
+    );
   }
   return (
     <div className="card fp-card fp-ready-card">
-      <h2 className="fp-card-title">{t("readyTitle")}</h2>
+      <h2 className="fp-card-title">{t("forestPrep.readyTitle")}</h2>
       <ul className="fp-checks fp-ready-list">
         {rows.map((row) => (
           <li
@@ -394,7 +434,13 @@ export function ForestReadyCard({
             <span className="fp-check-mark" aria-hidden="true">
               {row.state === "done" ? <CheckIcon size={13} /> : null}
             </span>
-            <span>{row.label}</span>
+            <span>
+              {row.label}
+              <span className="sr-only">
+                {", "}
+                {t(`forestPrep.${STATE_TEXT_KEY[row.state]}`)}
+              </span>
+            </span>
           </li>
         ))}
       </ul>
@@ -403,19 +449,19 @@ export function ForestReadyCard({
           {questionCount > 0 ? (
             <span className="fp-meta-item">
               <ListIcon size={20} />
-              {t("questionsCount", { count: questionCount })}
+              {t("forestPrep.questionsCount", { count: questionCount })}
             </span>
           ) : null}
           {minutes > 0 ? (
             <span className="fp-meta-item">
               <ClockIcon size={19} />
-              {t("minutesApprox", { minutes })}
+              {t("forestPrep.minutesApprox", { minutes })}
             </span>
           ) : null}
           {language ? (
             <span className="fp-meta-item">
               <GlobeIcon size={19} />
-              {t("languageIs", { language: LANGUAGE_NAMES[language] })}
+              {t("forestPrep.languageIs", { language: LANGUAGE_NAMES[language] })}
             </span>
           ) : null}
         </div>

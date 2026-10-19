@@ -166,6 +166,11 @@ function ForestAssignmentDetails({ assignment }: AssignmentDetailsCardProps) {
   const t = useTranslations();
   const tf = useTranslations("forestJourney.details");
   const dueLabel = assignment.dueLabelKey ? t(`due.${assignment.dueLabelKey}`) : "";
+  // "submitted*" labels already read as a sentence ("Submitted Apr 28"); only
+  // an upcoming due-* label gets the "Due {date}" prefix.
+  const isDone =
+    assignment.badgeKind === "done" ||
+    (assignment.dueLabelKey?.startsWith("submitted") ?? false);
   const status =
     assignment.badgeKind === "done"
       ? { tone: "ok", label: tf("statusDone") }
@@ -189,7 +194,7 @@ function ForestAssignmentDetails({ assignment }: AssignmentDetailsCardProps) {
           {dueLabel && (
             <>
               <span className="jr-sep" aria-hidden />
-              <span>{tf("due", { date: dueLabel })}</span>
+              <span>{isDone ? dueLabel : tf("due", { date: dueLabel })}</span>
             </>
           )}
         </div>
@@ -197,29 +202,29 @@ function ForestAssignmentDetails({ assignment }: AssignmentDetailsCardProps) {
 
       <dl className="card jr-facts">
         <div className="jr-fact">
-          <ClockIcon size={22} aria-hidden />
-          <div>
-            <dt>{tf("factLength")}</dt>
-            <dd>{tf("factLengthValue", { minutes: assignment.estimatedInterviewMinutes })}</dd>
-          </div>
+          <dt>
+            <ClockIcon size={22} aria-hidden />
+            {tf("factLength")}
+          </dt>
+          <dd>{tf("factLengthValue", { minutes: assignment.estimatedInterviewMinutes })}</dd>
         </div>
         <div className="jr-fact">
-          <FileTextIcon size={22} aria-hidden />
-          <div>
-            <dt>{tf("factUpload")}</dt>
-            <dd>
-              {tf("factUploadValue")}
-              <span className="jr-fact-sub">{tf("factFormats")}</span>
-            </dd>
-          </div>
+          <dt>
+            <FileTextIcon size={22} aria-hidden />
+            {tf("factUpload")}
+          </dt>
+          <dd>
+            {tf("factUploadValue")}
+            <span className="jr-fact-sub">{tf("factFormats")}</span>
+          </dd>
         </div>
         {hasTopics && (
           <div className="jr-fact">
-            <ListIcon size={22} aria-hidden />
-            <div>
-              <dt>{tf("factTopics")}</dt>
-              <dd>{tf("factTopicsValue", { count: assignment.topics.length })}</dd>
-            </div>
+            <dt>
+              <ListIcon size={22} aria-hidden />
+              {tf("factTopics")}
+            </dt>
+            <dd>{tf("factTopicsValue", { count: assignment.topics.length })}</dd>
           </div>
         )}
       </dl>

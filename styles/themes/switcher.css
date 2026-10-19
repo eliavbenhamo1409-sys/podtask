@@ -48,23 +48,34 @@
   color: rgb(var(--cyan));
 }
 
+/* A tiny page: the theme's background with its accent as a button, so it
+   reads as a preview, never as a radio button or a toggle. */
 .theme-swatch {
   position: relative;
   flex: none;
   width: 30px;
-  height: 20px;
-  border-radius: 5px;
-  border: 1px solid rgba(16, 24, 40, 0.16);
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(16, 24, 40, 0.18);
   overflow: hidden;
 }
-/* Split chip: page colour on one half, accent on the other. A square chip
-   (not a circle) so it never reads as a radio button. */
+.theme-swatch::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  inset-inline-start: 5px;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(16, 24, 40, 0.28);
+}
 .theme-swatch > span {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  inset-inline-end: 0;
-  width: 50%;
+  bottom: 5px;
+  inset-inline-start: 5px;
+  width: 11px;
+  height: 5px;
+  border-radius: 1.5px;
 }
 .theme-menu-name {
   flex: 1;
