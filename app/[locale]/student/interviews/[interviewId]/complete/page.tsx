@@ -14,6 +14,8 @@ import { isUsernameEmail } from "@/lib/auth/username";
 import { ScoreCard } from "./score-card";
 import { PrintButton } from "@/components/student/print-button";
 import { ConfettiBurst } from "@/components/podtask/confetti-burst";
+import { getTheme } from "@/lib/theme/server";
+import { isPersonalCourseCode } from "@/lib/integrity/settings";
 
 interface CompletePageProps {
   params: Promise<{ locale: string; interviewId: string }>;
@@ -33,10 +35,34 @@ export default async function CompletePage({ params }: CompletePageProps) {
   const data = await getInterviewWithAssignment(interviewId);
   if (!data) notFound();
 
-  const [profile, report] = await Promise.all([
+  const [profile, report, theme] = await Promise.all([
     getStudentProfile(),
     getReportForInterview(interviewId),
+    getTheme(),
   ]);
+
+  if (theme === "forest") {
+    const seconds = data.interview.durationSeconds;
+    return (
+      <StudentAppShell>
+        <ScoreCard
+          interviewId={interviewId}
+          initial={report}
+          forest={{
+            assignmentTitle: data.assignment.title,
+            durationLabel: typeof seconds === "number" && seconds > 0 ? formatTime(seconds) : null,
+            questionCount: data.interview.questions?.length ?? 0,
+            dateLabel: data.interview.completedAt
+              ? new Intl.DateTimeFormat(locale, { dateStyle: "short" }).format(
+                  new Date(data.interview.completedAt),
+                )
+              : t("complete.justNow"),
+            personal: isPersonalCourseCode(data.assignment.courseCode),
+          }}
+        />
+      </StudentAppShell>
+    );
+  }
 
   const duration = data.interview.durationSeconds ?? 0;
   const totalQuestions = data.interview.questions?.length ?? 0;

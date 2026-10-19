@@ -17,8 +17,10 @@ import { GlowOrb } from "@/components/podtask/glow-orb";
 import { Steps } from "@/components/podtask/steps";
 import {
   ArrowIcon,
+  BulbIcon,
   CheckIcon,
   ChevronIcon,
+  FileTextIcon,
   MicIcon,
   SparkIcon,
 } from "@/components/podtask/icons";
@@ -29,6 +31,7 @@ import {
 import { getGradingStatus } from "@/lib/student/grading-status";
 import { isHostDirective } from "@/lib/realtime/host-directives";
 import type { InterviewTranscript } from "@/lib/student/types";
+import { ForestReport, pickMoments, type ForestReportHead } from "./forest-report";
 
 type ReportShape = Awaited<ReturnType<typeof getReportForInterview>>;
 type ReadyReport = NonNullable<ReportShape>;
@@ -37,6 +40,8 @@ type Translate = ReturnType<typeof useTranslations>;
 interface ScoreCardProps {
   interviewId: string;
   initial: ReportShape | null;
+  /** Set by the page in the forest theme: renders the forest layout. */
+  forest?: ForestReportHead;
 }
 
 const POLL_INTERVAL_MS = 1500;
@@ -176,7 +181,7 @@ const RUBRIC_KEYS: Array<{ key: keyof NonNullable<ReadyReport["rubric"]>; labelK
   { key: "evidence", labelKey: "complete.rubricEvidence" },
 ];
 
-export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
+export function ScoreCard({ interviewId, initial, forest }: ScoreCardProps) {
   const t = useTranslations();
   const locale = useLocale();
   const [report, setReport] = useState<ReportShape>(initial);
@@ -254,6 +259,43 @@ export function ScoreCard({ interviewId, initial }: ScoreCardProps) {
   const ready = report && report.status === "ready" ? report : null;
   const groups = transcript ? groupTranscript(transcript) : null;
   const dir = locale === "he" ? "rtl" : "ltr";
+
+  if (forest) {
+    const rows: DisclosureItem[] = [
+      {
+        id: "transcript",
+        icon: <FileTextIcon size={22} />,
+        title: t("forestReport.transcript"),
+        meta: transcriptMeta(groups, t),
+        content: (
+          <TranscriptBody
+            groups={groups}
+            dir={dir}
+            t={t}
+            labels={{ host: t("forestReport.host"), you: t("forestReport.you") }}
+          />
+        ),
+      },
+    ];
+    if (ready && ready.recommendations.length > 0) {
+      rows.push({
+        id: "recommendations",
+        icon: <BulbIcon size={22} />,
+        title: t("forestReport.recommendations"),
+        content: <Bullets items={ready.recommendations} />,
+      });
+    }
+    return (
+      <ForestReport
+        head={forest}
+        report={ready}
+        failed={gradingFailed}
+        timedOut={timedOut}
+        moments={ready ? pickMoments(ready, transcript) : []}
+        more={<DisclosureGroup items={rows} />}
+      />
+    );
+  }
 
   const bars: DisclosureItem[] = [];
   if (ready && (ready.summary || ready.recommendations.length > 0)) {
@@ -702,9 +744,12 @@ function groupTranscript(transcript: InterviewTranscript): TranscriptGroup[] {
 function TranscriptGroupBlock({
   group,
   t,
+  labels,
 }: {
   group: TranscriptGroup;
   t: Translate;
+  /** Speaker names; the classic labels when omitted. */
+  labels?: { host: string; you: string };
 }) {
   const heading =
     group.index !== null
@@ -728,12 +773,62 @@ function TranscriptGroupBlock({
         return (
           <div key={i} className="transcript-msg" data-speaker={e.speaker}>
             <span className="transcript-who">
-              {t(e.speaker === "ai_host" ? "complete.transcriptHost" : "complete.transcriptYou")}
+              {labels
+                ? e.speaker === "ai_host"
+                  ? labels.host
+                  : labels.you
+                : t(e.speaker === "ai_host" ? "complete.transcriptHost" : "complete.transcriptYou")}
             </span>
             <div dir="auto">{e.content}</div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** "5 questions · 11 messages" for the forest transcript row. */
+function transcriptMeta(groups: TranscriptGroup[] | null, t: Translate): string | undefined {
+  if (!groups || groups.length === 0) return undefined;
+  return t("complete.transcriptMeta", {
+    questions: groups.filter((g) => g.index !== null).length,
+    messages: groups.reduce(
+      (n, g) => n + g.entries.filter((e) => e.speaker !== "system").length,
+      0,
+    ),
+  });
+}
+
+/** The transcript panel body for the forest layout. */
+function TranscriptBody({
+  groups,
+  dir,
+  t,
+  labels,
+}: {
+  groups: TranscriptGroup[] | null;
+  dir: "rtl" | "ltr";
+  t: Translate;
+  labels: { host: string; you: string };
+}) {
+  return (
+    <div dir={dir}>
+      {groups === null ? (
+        <div className="text-muted fr-transcript-empty">{t("common.loading")}</div>
+      ) : groups.length === 0 ? (
+        <div className="text-muted fr-transcript-empty">{t("complete.transcriptEmpty")}</div>
+      ) : (
+        <div className="transcript">
+          {groups.map((g, gi) => (
+            <TranscriptGroupBlock
+              key={`${g.planQuestionId ?? "x"}-${gi}`}
+              group={g}
+              t={t}
+              labels={labels}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

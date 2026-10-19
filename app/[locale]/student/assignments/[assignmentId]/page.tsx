@@ -7,6 +7,7 @@ import { WhatHappensNextCard } from "@/components/student/what-happens-next-card
 import { Link } from "@/lib/i18n/navigation";
 import { BackIcon } from "@/components/podtask/icons";
 import { getAssignmentById } from "@/lib/student/student-service-server";
+import { getTheme } from "@/lib/theme/server";
 
 interface AssignmentDetailsPageProps {
   params: Promise<{ locale: string; assignmentId: string }>;
@@ -32,6 +33,28 @@ export default async function AssignmentDetailsPage({
   if (!assignment) notFound();
 
   const uploadHref = `/student/assignments/${assignment.id}/upload`;
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <StudentAppShell>
+        <div className="page jr-page jr-details">
+          <Link href="/student" className="jr-back">
+            <span className="icon-flip">
+              <BackIcon />
+            </span>
+            {t("forestJourney.back.dashboard")}
+          </Link>
+          <div className="jr-details-grid">
+            <AssignmentDetailsCard assignment={assignment} />
+            <WhatHappensNextCard
+              uploadHref={uploadHref}
+              minutes={assignment.estimatedInterviewMinutes}
+            />
+          </div>
+        </div>
+      </StudentAppShell>
+    );
+  }
 
   return (
     <StudentAppShell>

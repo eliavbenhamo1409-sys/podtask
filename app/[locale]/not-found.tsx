@@ -3,9 +3,11 @@ import { Link } from "@/lib/i18n/navigation";
 import { Blobs } from "@/components/podtask/blobs";
 import { BrandMark } from "@/components/podtask/brand-mark";
 import { Eyebrow } from "@/components/podtask/eyebrow";
-import { ArrowIcon } from "@/components/podtask/icons";
+import { ArrowIcon, FileTextIcon } from "@/components/podtask/icons";
+import { getTheme } from "@/lib/theme/server";
 
 export default async function NotFound() {
+  if ((await getTheme()) === "forest") return <ForestNotFound />;
   const t = await getTranslations();
   return (
     <div className="screen" style={{ minHeight: "100vh", position: "relative" }}>
@@ -41,6 +43,43 @@ export default async function NotFound() {
           </Link>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Forest theme: wordmark above a plain hairline card (same frame as the
+ *  forest login), same destination as the classic page plus a quiet way to
+ *  the help page. Styles: styles/themes/forest/auth.css. */
+async function ForestNotFound() {
+  const t = await getTranslations("forestAuth.notFound");
+  return (
+    <div className="screen fa-shell">
+      <main className="fa-shell-inner">
+        <div className="fa-brand">
+          <BrandMark size={64} />
+        </div>
+        <section className="card fa-card fa-nf" aria-labelledby="fa-nf-title">
+          <span className="fa-nf-icon" aria-hidden>
+            <FileTextIcon size={26} />
+          </span>
+          <p className="fa-nf-code">{t("code")}</p>
+          <h1 id="fa-nf-title" className="fa-title">
+            {t("title")}
+          </h1>
+          <p className="fa-sub">{t("body")}</p>
+          <div className="fa-nf-actions">
+            <Link href="/student" className="btn btn-primary btn-lg fa-nf-cta">
+              {t("cta")}
+              <span className="icon-flip">
+                <ArrowIcon />
+              </span>
+            </Link>
+            <Link href="/student/help" className="fa-link">
+              {t("help")}
+            </Link>
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

@@ -1,0 +1,517 @@
+/* ==========================================================================
+   Forest theme: base tokens and shared primitives.
+
+   Calm, editorial skin: warm off-white paper, one deep green accent, thin
+   hairlines instead of shadows, small radii, no glass or glow. Every rule is
+   scoped under [data-theme="forest"], so the classic theme never sees it.
+
+   Token names are shared with the classic theme (globals.css) so inline
+   styles like `rgb(var(--cyan))` follow the theme. In this theme `--cyan`
+   is the green accent and `--pink-*` are the warm warning/error tones.
+   Page-specific rules live next to this file (one file per screen group).
+   ========================================================================== */
+
+html[data-theme="forest"] {
+  --bg: 247 246 241;
+  --bg-2: 240 239 233;
+  --white: 255 255 255;
+  --cyan-soft: 196 216 206;
+  --cyan: 31 90 74;
+  --cyan-bright: 44 116 93;
+  --pink-soft: 236 214 190;
+  --pink-bg: 251 236 232;
+  --pink-deep: 181 71 43;
+  --pink-rose: 180 35 24;
+  --ink: 27 31 29;
+  --ink-2: 52 59 55;
+  --muted: 104 110 105;
+  --line: 228 226 218;
+  --line-2: 237 235 228;
+
+  /* forest-only tokens */
+  --accent-hover: 24 73 60;
+  --accent-bg: 227 236 231;
+  --surface-2: 244 243 238;
+  --border-strong: 214 212 204;
+  --ok: 47 133 90;
+  --amber: 196 132 29;
+  --amber-ink: 143 90 11;
+  --amber-bg: 252 239 217;
+  --danger: 200 45 32;
+  --danger-bg: 251 232 229;
+
+  --radius-card: 12px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+
+  --shadow-card: none;
+  --shadow-soft: 0 1px 2px rgba(27, 31, 29, 0.04), 0 10px 28px rgba(27, 31, 29, 0.08);
+  --shadow-cyan: none;
+  --shadow-button: none;
+}
+
+/* ---- Page ---- */
+[data-theme="forest"] body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] ::selection {
+  background: rgba(31, 90, 74, 0.18);
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] :focus-visible {
+  outline: 2px solid rgb(var(--cyan));
+  outline-offset: 2px;
+}
+[data-theme="forest"] .blobs {
+  display: none;
+}
+[data-theme="forest"] .text-muted {
+  color: rgb(var(--muted));
+}
+
+[data-theme="forest"] .page {
+  max-width: 1460px;
+  padding: 40px 40px 80px;
+}
+[data-theme="forest"] .page-narrow {
+  max-width: 980px;
+  padding: 40px 40px 80px;
+}
+
+/* ---- Logo ---- */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
+  font-size: var(--wm-size, 28px);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: rgb(var(--ink));
+  white-space: nowrap;
+}
+.wordmark-wave {
+  height: 1.05em;
+  width: auto;
+  aspect-ratio: 26 / 28;
+  fill: rgb(var(--cyan));
+  flex: none;
+}
+
+/* ---- Cards ---- */
+[data-theme="forest"] .card {
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--line));
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: var(--radius-card);
+}
+[data-theme="forest"] .card-hero {
+  background: rgb(var(--bg-2));
+  border: 1px solid rgb(var(--line-2));
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: var(--radius-card);
+}
+
+/* ---- Top bar (shared shell; the forest TopBar renders .tb markup) ---- */
+[data-theme="forest"] .topbar {
+  background: rgba(250, 250, 247, 0.96);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .topbar-tagline {
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .nav-pill {
+  border-radius: 6px;
+  background: transparent;
+  border-color: transparent;
+  color: rgb(var(--ink-2));
+  font-size: 15px;
+  font-weight: 500;
+}
+[data-theme="forest"] .nav-pill:hover {
+  border-color: transparent;
+  background: rgb(var(--bg-2));
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .nav-pill.active {
+  background: rgb(var(--accent-bg));
+  border-color: transparent;
+  color: rgb(var(--cyan));
+}
+
+[data-theme="forest"] .tb {
+  height: 84px;
+  padding: 0 40px;
+  align-items: stretch;
+}
+.tb-start,
+.tb-end {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+.tb-end {
+  gap: 14px;
+  flex-shrink: 0;
+}
+.tb-brand {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+}
+.tb-divider {
+  width: 1px;
+  height: 26px;
+  background: rgb(var(--line));
+  flex: none;
+}
+.tb-area {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+  white-space: nowrap;
+}
+.tb-nav {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 28px;
+  margin-inline-start: 22px;
+}
+.tb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  padding: 3px 2px 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.tb-link:hover {
+  color: rgb(var(--ink));
+}
+.tb-link.active {
+  color: rgb(var(--cyan));
+  border-bottom-color: rgb(var(--cyan));
+  font-weight: 600;
+}
+.tb-lang {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tb-icon {
+  justify-content: center;
+  min-width: 36px;
+}
+.tb-avatar {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 50%;
+  text-decoration: none;
+}
+.tb-avatar .avatar,
+[data-theme="forest"] .avatar {
+  width: 46px;
+  height: 46px;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: none;
+}
+.tb-avatar.active .avatar {
+  box-shadow: 0 0 0 2px rgb(var(--cyan));
+}
+[data-theme="forest"] .theme-menu {
+  border-radius: 10px;
+}
+[data-theme="forest"] .theme-menu-item {
+  border-radius: 6px;
+}
+
+/* ---- Typography ---- */
+[data-theme="forest"] .eyebrow {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .eyebrow .dot {
+  display: none;
+}
+[data-theme="forest"] .display {
+  font-size: clamp(30px, 1.5vw + 18px, 42px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .title {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .subtitle {
+  color: rgb(var(--muted));
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+/* ---- Buttons ---- */
+[data-theme="forest"] .btn {
+  border-radius: 6px;
+  font-weight: 600;
+  padding: 13px 22px;
+  box-shadow: none;
+}
+[data-theme="forest"] .btn:active {
+  transform: none;
+}
+[data-theme="forest"] .btn:disabled {
+  opacity: 0.45;
+}
+[data-theme="forest"] .btn-primary {
+  color: #fff;
+  background: rgb(var(--cyan));
+  box-shadow: none;
+}
+[data-theme="forest"] .btn-primary:hover {
+  background: rgb(var(--accent-hover));
+  transform: none;
+  box-shadow: none;
+}
+[data-theme="forest"] .btn-secondary {
+  color: rgb(var(--ink));
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--ink) / 0.42);
+  box-shadow: none;
+}
+[data-theme="forest"] .btn-secondary:hover {
+  color: rgb(var(--ink));
+  background: rgb(var(--surface-2));
+  border-color: rgb(var(--ink) / 0.7);
+}
+[data-theme="forest"] .btn-ghost {
+  color: rgb(var(--cyan));
+  font-weight: 600;
+}
+[data-theme="forest"] .btn-ghost:hover {
+  color: rgb(var(--accent-hover));
+}
+[data-theme="forest"] .btn-lg {
+  padding: 16px 28px;
+  font-size: 17px;
+}
+
+/* ---- Inputs ---- */
+[data-theme="forest"] .input {
+  border-radius: 6px;
+  border: 1px solid rgb(var(--border-strong));
+  background: rgb(var(--white));
+  padding: 13px 16px;
+}
+[data-theme="forest"] .input::placeholder {
+  color: rgb(var(--muted) / 0.8);
+}
+[data-theme="forest"] .input:focus {
+  border-color: rgb(var(--cyan));
+  box-shadow: 0 0 0 3px rgba(31, 90, 74, 0.14);
+}
+
+/* ---- Badges ---- */
+[data-theme="forest"] .badge {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 5px 12px;
+}
+[data-theme="forest"] .badge-cyan,
+[data-theme="forest"] .badge-mint {
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .badge-amber {
+  background: rgb(var(--amber-bg));
+  color: rgb(var(--amber-ink));
+}
+[data-theme="forest"] .badge-pink {
+  background: rgb(var(--danger-bg));
+  color: rgb(var(--pink-rose));
+}
+[data-theme="forest"] .badge-neutral {
+  background: rgb(var(--surface-2));
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .badge .dot {
+  box-shadow: none;
+}
+
+/* ---- Chips ---- */
+[data-theme="forest"] .chip {
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--line));
+  color: rgb(var(--ink-2));
+  font-weight: 500;
+}
+[data-theme="forest"] .chip-cyan,
+[data-theme="forest"] .chip-active {
+  background: rgb(var(--accent-bg));
+  border-color: rgb(var(--cyan-soft));
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .chip-pink {
+  background: rgb(var(--danger-bg));
+  border-color: rgb(241 201 194);
+  color: rgb(var(--pink-rose));
+}
+
+/* ---- Steps: number above the label, hairline connectors ---- */
+[data-theme="forest"] .steps {
+  align-items: flex-start;
+}
+[data-theme="forest"] .step {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+[data-theme="forest"] .step-num {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  background: rgb(233 232 226);
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .step.active .step-num,
+[data-theme="forest"] .step.done .step-num {
+  background: rgb(var(--cyan));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-theme="forest"] .step-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .step.active .step-label {
+  color: rgb(var(--cyan));
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}
+[data-theme="forest"] .step-line,
+[data-theme="forest"] .step-line.done {
+  height: 1px;
+  margin: 16px 12px 0;
+  min-width: 40px;
+  border-radius: 0;
+  background: rgb(var(--border-strong));
+}
+
+/* ---- Meter ---- */
+[data-theme="forest"] .meter {
+  background: rgb(231 229 222);
+}
+[data-theme="forest"] .meter > span {
+  background: rgb(var(--cyan));
+}
+
+/* ---- Small screens ---- */
+@media (max-width: 1100px) {
+  .tb-area {
+    display: none;
+  }
+  .tb-start > .tb-divider {
+    display: none;
+  }
+  .tb-nav {
+    margin-inline-start: 8px;
+    gap: 20px;
+  }
+}
+@media (max-width: 760px) {
+  [data-theme="forest"] .tb {
+    height: 64px;
+    padding: 0 16px;
+  }
+  .tb-label {
+    display: none;
+  }
+  .tb-start {
+    gap: 12px;
+  }
+  .tb .wordmark {
+    font-size: 22px;
+  }
+  .tb-nav {
+    gap: 12px;
+    margin-inline-start: 4px;
+  }
+  .tb-end {
+    gap: 6px;
+  }
+  .tb-link {
+    min-width: 28px;
+    justify-content: center;
+  }
+  .tb-end > .tb-divider {
+    display: none;
+  }
+  .tb-avatar .avatar,
+  [data-theme="forest"] .avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 14px;
+  }
+  [data-theme="forest"] .page,
+  [data-theme="forest"] .page-narrow {
+    padding: 28px 16px 64px;
+  }
+}
+
+/* ---- Journey stepper (components/student/journey-steps.tsx) ---- */
+.journey-steps .steps {
+  justify-content: center;
+}
+.journey-steps .step-line {
+  flex: 1 1 0;
+  max-width: 150px;
+}
+@media (max-width: 760px) {
+  .journey-steps .step-label {
+    font-size: 13px;
+  }
+  .journey-steps .step-line {
+    min-width: 16px;
+    margin-inline: 6px;
+  }
+}

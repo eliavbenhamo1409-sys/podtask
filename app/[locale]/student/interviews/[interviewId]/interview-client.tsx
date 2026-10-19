@@ -45,6 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "@/lib/i18n/navigation";
+import { useTheme } from "@/components/providers/theme-provider";
 import { Blobs } from "@/components/podtask/blobs";
 import { Badge, Chip } from "@/components/podtask/chip";
 import { BrandMark } from "@/components/podtask/brand-mark";
@@ -57,8 +58,11 @@ import {
   MicOffIcon,
   PauseIcon,
   PlayIcon,
+  RefreshIcon,
   RepeatIcon,
+  SkipIcon,
   SparkIcon,
+  StopIcon,
   XIcon,
 } from "@/components/podtask/icons";
 import { MOCK_INTERVIEW_QUESTIONS } from "@/lib/student/mock-data";
@@ -130,11 +134,16 @@ import {
 } from "@/lib/realtime/host-text-heuristics";
 import type { StudentInterviewQuestion } from "@/lib/student/types";
 import {
+  ForestIntegrity,
+  ForestProgress,
+  ForestStage,
   HostStage,
   QuestionProgress,
   Spinner,
   StudentTile,
   TranscriptBubble,
+  VoiceBars,
+  type ForestTone,
 } from "./interview-parts";
 
 // ---- Section: build/mode config ----
@@ -173,6 +182,9 @@ interface InterviewRoomClientProps {
   interviewId: string;
   submissionId: string;
   assignmentTitle: string;
+  /** Forest top bar only: "course · student" under the title. */
+  courseName?: string;
+  studentFullName?: string;
   questions: StudentInterviewQuestion[];
   /** UI locale (chrome, labels). */
   locale: string;
@@ -222,6 +234,8 @@ export function InterviewRoomClient({
   interviewId,
   submissionId,
   assignmentTitle,
+  courseName,
+  studentFullName,
   questions: initialQuestions,
   locale,
   interviewLanguage,
@@ -233,6 +247,12 @@ export function InterviewRoomClient({
 }: InterviewRoomClientProps) {
   const t = useTranslations();
   const router = useRouter();
+  // Visual skin only: the forest room rearranges the same pieces. Nothing
+  // below this line behaves differently per theme.
+  const { theme } = useTheme();
+  const isForest = theme === "forest";
+  // Forest only: the earlier-lines list can be folded away.
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
   const questions = useMemo(
     () =>
       initialQuestions.length > 0
@@ -1652,72 +1672,168 @@ export function InterviewRoomClient({
       Math.min(totalQuestions - 1, Math.max(0, session.questionIndex))
     ];
 
+  // ---- Section: forest view state (presentational only) ----
+  // Everything here only feeds the forest markup; the classic room never
+  // reads it.
+
+  const hostName = t("lobby.hostName");
+  const forestStatus: { label: string; tone: ForestTone } =
+    hostOrbState === "speaking"
+      ? { label: t("forestRoom.statusSpeaking"), tone: "on" }
+      : hostOrbState === "listening"
+        ? { label: t("forestRoom.statusListening"), tone: "on" }
+        : hostOrbState === "thinking"
+          ? {
+              label: connecting
+                ? t("forestRoom.statusConnecting")
+                : t("forestRoom.statusThinking"),
+              tone: "busy",
+            }
+          : {
+              label:
+                wrappingUp || closingOrDone
+                  ? t("forestRoom.statusEnding")
+                  : t("forestRoom.statusWaiting"),
+              tone: "off",
+            };
+  // The big text: the host's latest words in live sessions, the question on
+  // the table in the mock driver. Earlier host lines go to the list below.
+  const spokenLines = isLive ? transcript.filter((entry) => entry.text) : [];
+  const latestLine = spokenLines[spokenLines.length - 1];
+  const forestText = isLive
+    ? (latestLine?.text ?? t("forestRoom.emptyCaption"))
+    : (currentQuestion?.question ?? "");
+  const forestTextMuted = isLive && !latestLine;
+  const forestListen: { label: string; tone: ForestTone } = isLive
+    ? muted
+      ? { label: t("forestRoom.listenMuted"), tone: "off" }
+      : studentSpeaking
+        ? { label: t("forestRoom.listenHearing"), tone: "on" }
+        : studentTurn
+          ? { label: t("forestRoom.listenYourTurn"), tone: "on" }
+          : { label: t("forestRoom.listenOpen"), tone: "busy" }
+    : recording
+      ? { label: t("forestRoom.listenMockRecording"), tone: "rec" }
+      : session.state === "student_turn"
+        ? { label: t("forestRoom.listenMockTurn"), tone: "on" }
+        : { label: t("forestRoom.listenMockWait"), tone: "busy" };
+  const forestCamLabel =
+    cameraStatus === "on"
+      ? t("forestRoom.cameraOn")
+      : cameraStatus === "idle" || cameraStatus === "starting"
+        ? t("forestRoom.cameraStarting")
+        : t("forestRoom.cameraOff");
+  const cameraMonitored = integrity.camera !== "off";
+  const forestMonitorBody =
+    integrity.activityMonitoring && cameraMonitored
+      ? t("forestRoom.monitorBoth")
+      : integrity.activityMonitoring
+        ? t("forestRoom.monitorTabs")
+        : t("forestRoom.monitorCamera");
+  const forestSubline = [courseName, studentFullName].filter(Boolean).join(" · ");
+  const toggleTranscript = () => {
+    setTranscriptOpen((open) => !open);
+    // Reopened: land on the latest line again.
+    window.requestAnimationFrame(() => {
+      const el = transcriptScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  };
+
   // ---- Section: JSX ----
 
   return (
     <div
-      className="screen-fade"
+      className={isForest ? "screen-fade fr-room" : "screen-fade"}
       style={{ minHeight: "100vh", position: "relative" }}
     >
       <Blobs variant="studio" />
 
-      <header className="topbar topbar-room">
-        <div className="row" style={{ gap: 12, minWidth: 0 }}>
-          <BrandMark size={32} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 14 }}>
-              {t("interview.live")}
-            </div>
-            <div
-              className="text-muted room-title"
-              style={{ fontSize: 11, fontWeight: 600 }}
-              title={assignmentTitle}
-            >
+      {isForest ? (
+        <header className="topbar fr-top">
+          <div className="fr-top-start">
+            <BrandMark size={56} />
+            <span className="tb-divider fr-top-sep" aria-hidden />
+            <span className="fr-top-area">{t("forestRoom.area")}</span>
+          </div>
+          <div className="fr-top-center">
+            <div className="fr-top-title" title={assignmentTitle}>
               {assignmentTitle}
             </div>
+            {forestSubline ? (
+              <div className="fr-top-sub">{forestSubline}</div>
+            ) : null}
           </div>
-        </div>
-        <div className="row" style={{ gap: 12, flexShrink: 0 }}>
-          {showResumed ? (
-            <Badge variant="mint" className="hide-sm">
-              {t("interview.resumedChip")}
+          <div className="fr-top-end">
+            <span className="fr-top-time" aria-label={t("forestRoom.timeLabel")}>
+              {formatTime(elapsed)}
+            </span>
+            <span className="tb-divider" aria-hidden />
+            <span className="fr-top-live">
+              <span className="fr-dot" aria-hidden />
+              {t("forestRoom.live")}
+            </span>
+          </div>
+        </header>
+      ) : (
+        <header className="topbar topbar-room">
+          <div className="row" style={{ gap: 12, minWidth: 0 }}>
+            <BrandMark size={32} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>
+                {t("interview.live")}
+              </div>
+              <div
+                className="text-muted room-title"
+                style={{ fontSize: 11, fontWeight: 600 }}
+                title={assignmentTitle}
+              >
+                {assignmentTitle}
+              </div>
+            </div>
+          </div>
+          <div className="row" style={{ gap: 12, flexShrink: 0 }}>
+            {showResumed ? (
+              <Badge variant="mint" className="hide-sm">
+                {t("interview.resumedChip")}
+              </Badge>
+            ) : null}
+            {monitoringOn ? (
+              <Badge
+                variant={exitCount >= 3 ? "amber" : "mint"}
+                className="room-monitor-badge"
+              >
+                <span className="room-monitor-sync" data-sync={syncState} aria-hidden />
+                {t("interview.monitorActive")}
+                {exitCount > 0 ? (
+                  <span className="room-monitor-count">
+                    {t("interview.monitorExits", { n: exitCount })}
+                  </span>
+                ) : null}
+                <span className="sr-only">{t(`interview.sync_${syncState}`)}</span>
+              </Badge>
+            ) : null}
+            <Badge variant="pink" className="room-rec">
+              <span
+                className="dot"
+                style={{
+                  background: "#FB7185",
+                  boxShadow: "0 0 8px #FB7185",
+                }}
+              />
+              {t("interview.recordingTime", { time: formatTime(elapsed) })}
             </Badge>
-          ) : null}
-          {monitoringOn ? (
-            <Badge
-              variant={exitCount >= 3 ? "amber" : "mint"}
-              className="room-monitor-badge"
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: "8px 14px", fontSize: 13 }}
+              onClick={handleEndEarly}
             >
-              <span className="room-monitor-sync" data-sync={syncState} aria-hidden />
-              {t("interview.monitorActive")}
-              {exitCount > 0 ? (
-                <span className="room-monitor-count">
-                  {t("interview.monitorExits", { n: exitCount })}
-                </span>
-              ) : null}
-              <span className="sr-only">{t(`interview.sync_${syncState}`)}</span>
-            </Badge>
-          ) : null}
-          <Badge variant="pink" className="room-rec">
-            <span
-              className="dot"
-              style={{
-                background: "#FB7185",
-                boxShadow: "0 0 8px #FB7185",
-              }}
-            />
-            {t("interview.recordingTime", { time: formatTime(elapsed) })}
-          </Badge>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ padding: "8px 14px", fontSize: 13 }}
-            onClick={handleEndEarly}
-          >
-            {t("interview.endEarly")}
-          </button>
-        </div>
-      </header>
+              {t("interview.endEarly")}
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* "You left the exam screen" notice: recorded, not accusatory. */}
       <AnimatePresence>
@@ -1757,71 +1873,123 @@ export function InterviewRoomClient({
 
       <div className="room-main">
         <div className="room-grid">
-          <HostStage
-            eyebrow={
-              <Eyebrow icon={<SparkIcon size={14} />}>
-                {t("interview.aiHost")}
-              </Eyebrow>
-            }
-            chip={
-              <Chip variant={hostOrbState === "speaking" ? "cyan" : "default"}>
-                <span
-                  data-pulse={hostOrbState !== "idle" ? "true" : undefined}
-                  style={{
-                    display: "inline-flex",
-                    color:
-                      hostOrbState === "listening"
-                        ? "rgb(var(--pink-deep))"
-                        : "rgb(var(--cyan))",
-                  }}
+          {isForest ? (
+            <ForestStage
+              status={forestStatus.label}
+              statusTone={forestStatus.tone}
+              extraChip={
+                showResumed ? (
+                  <span className="fr-status fr-resumed" data-tone="on">
+                    {t("interview.resumedChip")}
+                  </span>
+                ) : null
+              }
+              questionLabel={t("forestRoom.questionOf", {
+                current: currentQuestionNumber,
+                total: totalQuestions,
+              })}
+              text={forestText}
+              textDir={
+                isLive
+                  ? isRtlInterviewLanguage(interviewLanguage)
+                    ? "rtl"
+                    : "ltr"
+                  : "auto"
+              }
+              textMuted={forestTextMuted}
+              hint={t("forestRoom.answerHint")}
+              listenLabel={forestListen.label}
+              listenTone={forestListen.tone}
+              bars={
+                <VoiceBars
+                  className="fr-bars"
+                  level={isLive ? userLevel : undefined}
+                  active={!muted && (isLive ? true : recording)}
+                />
+              }
+              transcript={
+                isLive
+                  ? {
+                      title: t("forestRoom.transcriptTitle"),
+                      open: transcriptOpen,
+                      onToggle: toggleTranscript,
+                      lines: spokenLines.slice(0, -1),
+                      empty: t("forestRoom.transcriptEmpty"),
+                      hostName,
+                      hostInitial: hostName.slice(0, 1),
+                      label: t("interview.liveTranscript"),
+                    }
+                  : undefined
+              }
+              transcriptRef={isLive ? transcriptScrollRef : undefined}
+            />
+          ) : (
+            <HostStage
+              eyebrow={
+                <Eyebrow icon={<SparkIcon size={14} />}>
+                  {t("interview.aiHost")}
+                </Eyebrow>
+              }
+              chip={
+                <Chip variant={hostOrbState === "speaking" ? "cyan" : "default"}>
+                  <span
+                    data-pulse={hostOrbState !== "idle" ? "true" : undefined}
+                    style={{
+                      display: "inline-flex",
+                      color:
+                        hostOrbState === "listening"
+                          ? "rgb(var(--pink-deep))"
+                          : "rgb(var(--cyan))",
+                    }}
+                  >
+                    <span className="room-state-dot" />
+                  </span>
+                  {hostStatusLabel}
+                </Chip>
+              }
+              name={t("lobby.hostName")}
+              role={t("interview.podcastHost")}
+              orbState={hostOrbState}
+              level={isLive ? hostLevel : undefined}
+            >
+              {/* CAPTIONS, right under the orb. Live: the host's side of the
+                  conversation in chronological order, auto-scrolled to the
+                  latest line. The mock driver has no transcript, so it shows
+                  the question on the table instead. */}
+              {isLive ? (
+                <div
+                  className="room-captions"
+                  data-live={hostGlow ? "true" : undefined}
+                  dir={isRtlInterviewLanguage(interviewLanguage) ? "rtl" : "ltr"}
+                  aria-label={t("interview.liveTranscript")}
                 >
-                  <span className="room-state-dot" />
-                </span>
-                {hostStatusLabel}
-              </Chip>
-            }
-            name={t("lobby.hostName")}
-            role={t("interview.podcastHost")}
-            orbState={hostOrbState}
-            level={isLive ? hostLevel : undefined}
-          >
-            {/* CAPTIONS, right under the orb. Live: the host's side of the
-                conversation in chronological order, auto-scrolled to the
-                latest line. The mock driver has no transcript, so it shows
-                the question on the table instead. */}
-            {isLive ? (
-              <div
-                className="room-captions"
-                data-live={hostGlow ? "true" : undefined}
-                dir={isRtlInterviewLanguage(interviewLanguage) ? "rtl" : "ltr"}
-                aria-label={t("interview.liveTranscript")}
-              >
-                <div ref={transcriptScrollRef} className="room-captions-scroll">
-                  {transcript.length === 0 ? (
-                    <div className="room-captions-empty">
-                      {hostStatusLabel}
-                    </div>
-                  ) : (
-                    transcript.map((entry) => (
-                      <TranscriptBubble
-                        key={entry.id}
-                        text={entry.text}
-                        isLive={!entry.final}
-                        hostLabel={t("interview.aiHost")}
-                      />
-                    ))
-                  )}
+                  <div ref={transcriptScrollRef} className="room-captions-scroll">
+                    {transcript.length === 0 ? (
+                      <div className="room-captions-empty">
+                        {hostStatusLabel}
+                      </div>
+                    ) : (
+                      transcript.map((entry) => (
+                        <TranscriptBubble
+                          key={entry.id}
+                          text={entry.text}
+                          isLive={!entry.final}
+                          hostLabel={t("interview.aiHost")}
+                        />
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div
-                className="room-captions"
-                aria-label={t("interview.currentQuestion")}
-              >
-                <p className="room-question">{currentQuestion?.question}</p>
-              </div>
-            )}
-          </HostStage>
+              ) : (
+                <div
+                  className="room-captions"
+                  aria-label={t("interview.currentQuestion")}
+                >
+                  <p className="room-question">{currentQuestion?.question}</p>
+                </div>
+              )}
+            </HostStage>
+          )}
 
           <div className="room-side">
             <StudentTile
@@ -1869,6 +2037,20 @@ export function InterviewRoomClient({
               warning={liveWarning ? t(`interview.warn_${liveWarning.reason}`) : null}
               debugLine={proctorDebug ? formatLiveWarningDebug(proctorDebug) : undefined}
               videoRef={attachCameraVideo}
+              overlay={
+                isForest ? (
+                  <>
+                    <span
+                      className="fr-cam-pill"
+                      data-on={cameraStatus === "on" ? "true" : undefined}
+                    >
+                      <span className="fr-dot" aria-hidden />
+                      {forestCamLabel}
+                    </span>
+                    <span className="fr-cam-label">{t("forestRoom.selfView")}</span>
+                  </>
+                ) : undefined
+              }
             />
             {integrity.camera !== "off" &&
             (cameraStatus === "denied" ||
@@ -1897,18 +2079,45 @@ export function InterviewRoomClient({
                 </button>
               </div>
             ) : null}
-            <QuestionProgress
-              title={t("interview.questionOf", {
-                current: currentQuestionNumber,
-                total: totalQuestions,
-              })}
-              current={currentQuestionNumber}
-              total={totalQuestions}
-              allDone={wrappingUp || closingOrDone}
-              topicLabel={t("interview.currentTopic")}
-              topic={currentQuestion?.topic}
-              hint={t("interview.thinkAloud")}
-            />
+            {isForest ? (
+              <ForestProgress
+                heading={t("forestRoom.progressTitle")}
+                countLabel={t("forestRoom.questionOf", {
+                  current: currentQuestionNumber,
+                  total: totalQuestions,
+                })}
+                current={currentQuestionNumber}
+                total={totalQuestions}
+                allDone={wrappingUp || closingOrDone}
+              />
+            ) : (
+              <QuestionProgress
+                title={t("interview.questionOf", {
+                  current: currentQuestionNumber,
+                  total: totalQuestions,
+                })}
+                current={currentQuestionNumber}
+                total={totalQuestions}
+                allDone={wrappingUp || closingOrDone}
+                topicLabel={t("interview.currentTopic")}
+                topic={currentQuestion?.topic}
+                hint={t("interview.thinkAloud")}
+              />
+            )}
+            {isForest && monitoringOn ? (
+              <ForestIntegrity
+                title={t("forestRoom.monitorTitle")}
+                body={forestMonitorBody}
+                count={
+                  exitCount > 0
+                    ? t("forestRoom.monitorExits", { n: exitCount })
+                    : undefined
+                }
+                countWarn={exitCount >= 3}
+                sync={syncState}
+                syncLabel={t(`interview.sync_${syncState}`)}
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -1935,8 +2144,9 @@ export function InterviewRoomClient({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
                 transition={{ duration: 0.2 }}
-                className="card"
-                style={{
+                className={isForest ? "fr-banner" : "card"}
+                data-kind={isForest ? banner : undefined}
+                style={isForest ? undefined : {
                   marginBottom: 12,
                   padding: "16px 20px",
                   borderRadius: 20,
@@ -1977,15 +2187,19 @@ export function InterviewRoomClient({
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ padding: "10px 14px", fontSize: 13 }}
+                    style={isForest ? undefined : { padding: "10px 14px", fontSize: 13 }}
                     onClick={() => setBanner(null)}
                   >
                     {t("common.cancel")}
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
-                    style={{
+                    className={
+                      isForest && banner === "skip"
+                        ? "btn fr-btn-danger"
+                        : "btn btn-primary"
+                    }
+                    style={isForest ? undefined : {
                       padding: "10px 14px",
                       fontSize: 13,
                       ...(banner === "skip"
@@ -2004,176 +2218,346 @@ export function InterviewRoomClient({
               </motion.div>
             ) : null}
           </AnimatePresence>
-          <div
-            className="card room-dock"
-            style={{
-              padding: "16px 20px",
-              borderRadius: 28,
-              background: "rgba(255,255,255,0.94)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ padding: "12px 16px", fontSize: 13 }}
-                onClick={() => setPaused((p) => !p)}
-              >
-                {paused ? (
+          {isForest ? (
+            <div className="fr-dock">
+              <div className="fr-dock-mic">
+                {isLive && wrappingUp ? (
+                  <div className="fr-dock-farewell">
+                    <Spinner forest />
+                    <span>{t("interview.farewell")}</span>
+                  </div>
+                ) : isLive ? (
                   <>
-                    <PlayIcon /> {t("interview.resume")}
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      aria-label={
+                        muted ? t("interview.unmute") : t("interview.mute")
+                      }
+                      aria-pressed={muted}
+                      className="fr-mic"
+                      data-muted={muted ? "true" : undefined}
+                      style={{
+                        ["--lvl" as string]: muted
+                          ? 0
+                          : Math.min(1, userLevel * 4).toFixed(3),
+                      }}
+                    >
+                      {muted ? <MicOffIcon size={24} /> : <MicIcon size={24} />}
+                    </button>
+                    <div className="fr-mic-status">
+                      <span
+                        className="fr-mic-label"
+                        data-tone={muted ? "off" : "on"}
+                      >
+                        <span className="fr-dot" aria-hidden />
+                        {muted ? t("forestRoom.micMuted") : t("forestRoom.micOn")}
+                      </span>
+                      <span className="fr-mic-hint">
+                        {muted
+                          ? t("interview.spaceToUnmute")
+                          : t("interview.spaceToMute")}
+                      </span>
+                    </div>
                   </>
                 ) : (
                   <>
-                    <PauseIcon /> {t("interview.pause")}
+                    <MicButton
+                      recording={recording}
+                      size={56}
+                      className="fr-mic"
+                      onClick={() => {
+                        if (session.state === "student_turn") {
+                          session.startRecording();
+                        } else if (session.state === "student_recording") {
+                          session.finishRecording();
+                        }
+                      }}
+                      ariaLabel={t("interview.recording")}
+                      disabled={
+                        session.state !== "student_turn" &&
+                        session.state !== "student_recording"
+                      }
+                    >
+                      {recording ? <StopIcon size={22} /> : <MicIcon size={24} />}
+                    </MicButton>
+                    <div className="fr-mic-status">
+                      <span
+                        className="fr-mic-label"
+                        data-tone={
+                          recording
+                            ? "rec"
+                            : session.state === "student_turn"
+                              ? "on"
+                              : "off"
+                        }
+                      >
+                        <span className="fr-dot" aria-hidden />
+                        {recording
+                          ? t("forestRoom.micRecording")
+                          : session.state === "student_turn"
+                            ? t("forestRoom.micReady")
+                            : t("forestRoom.micIdle")}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary fr-dock-primary"
+                      onClick={handleMockPrimary}
+                      disabled={aiSpeaking || processing}
+                    >
+                      {primaryLabel}
+                      <span className="icon-flip">
+                        <ArrowIcon />
+                      </span>
+                    </button>
                   </>
                 )}
-              </button>
-              {!wrappingUp && !closingOrDone ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: "12px 16px", fontSize: 13 }}
-                    onClick={() => setBanner("skip")}
-                    disabled={controlsLocked}
-                  >
-                    <span className="icon-flip">
-                      <ArrowIcon />
-                    </span>{" "}
-                    {t("interview.skipQuestion")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{ padding: "12px 16px", fontSize: 13 }}
-                    onClick={() => setBanner("replace")}
-                    disabled={controlsLocked || replaceUsed}
-                  >
-                    <RepeatIcon size={14} />{" "}
-                    {replaceUsed
-                      ? t("interview.replaceUsed")
-                      : t("interview.replaceQuestion")}
-                  </button>
-                </>
-              ) : null}
-            </div>
+              </div>
 
-            <div
-              className="row"
-              style={{ gap: 16, alignItems: "center", flexWrap: "wrap" }}
-            >
-              {adapterMode === "openai" && wrappingUp ? (
-                <div className="row" style={{ gap: 12, alignItems: "center" }}>
-                  <Spinner />
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>
-                    {t("interview.farewell")}
-                  </div>
-                </div>
-              ) : adapterMode === "openai" ? (
-                <>
-                  <div
-                    className="text-muted hide-sm"
-                    style={{ fontSize: 12, fontWeight: 600 }}
-                  >
-                    {muted
-                      ? t("interview.spaceToUnmute")
-                      : t("interview.spaceToMute")}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={toggleMute}
-                    aria-label={
-                      muted ? t("interview.unmute") : t("interview.mute")
-                    }
-                    aria-pressed={muted}
-                    className="room-mic"
-                    style={{
-                      ["--lvl" as string]: muted
-                        ? 0
-                        : Math.min(1, userLevel * 4).toFixed(3),
-                      width: 64,
-                      height: 64,
-                      borderRadius: "50%",
-                      border: "none",
-                      cursor: "pointer",
-                      background: muted
-                        ? "linear-gradient(135deg,#94A3B8,#475569)"
-                        : "linear-gradient(135deg,#FDA4AF,#F43F5E)",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: muted
-                        ? "0 8px 22px rgba(71,85,105,0.35)"
-                        : "0 12px 28px rgba(244,63,94,0.35)",
-                      transition: "transform .15s ease",
-                    }}
-                  >
-                    {muted ? <MicOffIcon size={26} /> : <MicIcon size={26} />}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    style={{
-                      padding: "14px 22px",
-                      fontSize: 14,
-                      borderColor: "rgba(244,63,94,0.4)",
-                      color: "#9F1239",
-                    }}
-                    onClick={handleEndEarly}
-                  >
-                    <XIcon size={14} /> {t("interview.endInterviewShort")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <MicButton
-                    recording={recording}
-                    size={72}
-                    onClick={() => {
-                      if (session.state === "student_turn") {
-                        session.startRecording();
-                      } else if (session.state === "student_recording") {
-                        session.finishRecording();
+              <div className="fr-dock-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary fr-act"
+                  onClick={() => setPaused((p) => !p)}
+                  aria-label={paused ? t("interview.resume") : t("interview.pause")}
+                >
+                  {paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
+                  <span>{paused ? t("interview.resume") : t("interview.pause")}</span>
+                </button>
+                {!wrappingUp && !closingOrDone ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary fr-act"
+                      onClick={() => setBanner("skip")}
+                      disabled={controlsLocked}
+                      aria-label={t("interview.skipQuestion")}
+                    >
+                      <span className="icon-flip fr-act-icon">
+                        <SkipIcon size={18} />
+                      </span>
+                      <span className="fr-act-long">{t("interview.skipQuestion")}</span>
+                      <span className="fr-act-short" aria-hidden>
+                        {t("forestRoom.skipShort")}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary fr-act"
+                      onClick={() => setBanner("replace")}
+                      disabled={controlsLocked || replaceUsed}
+                      aria-label={
+                        replaceUsed
+                          ? t("interview.replaceUsed")
+                          : t("interview.replaceQuestion")
                       }
-                    }}
-                    ariaLabel={t("interview.recording")}
-                    disabled={
-                      session.state !== "student_turn" &&
-                      session.state !== "student_recording"
-                    }
-                  >
-                    {recording ? (
-                      <div
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: 4,
-                          background: "white",
-                        }}
-                      />
-                    ) : (
-                      <MicIcon size={26} />
-                    )}
-                  </MicButton>
+                    >
+                      <RefreshIcon size={18} className="fr-act-icon" />
+                      <span className="fr-act-long">
+                        {replaceUsed
+                          ? t("interview.replaceUsed")
+                          : t("interview.replaceQuestion")}
+                      </span>
+                      <span className="fr-act-short" aria-hidden>
+                        {replaceUsed
+                          ? t("forestRoom.swapUsedShort")
+                          : t("forestRoom.swapShort")}
+                      </span>
+                    </button>
+                  </>
+                ) : null}
+              </div>
+
+              <div className="fr-dock-end">
+                {!(isLive && wrappingUp) ? (
                   <button
                     type="button"
-                    className="btn btn-primary"
-                    style={{ padding: "14px 22px", fontSize: 14 }}
-                    onClick={handleMockPrimary}
-                    disabled={aiSpeaking || processing}
+                    className="btn fr-end"
+                    onClick={handleEndEarly}
+                    aria-label={t("forestRoom.endConversation")}
                   >
-                    {primaryLabel}
-                    <span className="icon-flip">
-                      <ArrowIcon />
+                    <StopIcon size={16} />
+                    <span className="fr-act-long">{t("forestRoom.endConversation")}</span>
+                    <span className="fr-act-short" aria-hidden>
+                      {t("forestRoom.endShort")}
                     </span>
                   </button>
-                </>
-              )}
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div
+              className="card room-dock"
+              style={{
+                padding: "16px 20px",
+                borderRadius: 28,
+                background: "rgba(255,255,255,0.94)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "12px 16px", fontSize: 13 }}
+                  onClick={() => setPaused((p) => !p)}
+                >
+                  {paused ? (
+                    <>
+                      <PlayIcon /> {t("interview.resume")}
+                    </>
+                  ) : (
+                    <>
+                      <PauseIcon /> {t("interview.pause")}
+                    </>
+                  )}
+                </button>
+                {!wrappingUp && !closingOrDone ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "12px 16px", fontSize: 13 }}
+                      onClick={() => setBanner("skip")}
+                      disabled={controlsLocked}
+                    >
+                      <span className="icon-flip">
+                        <ArrowIcon />
+                      </span>{" "}
+                      {t("interview.skipQuestion")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: "12px 16px", fontSize: 13 }}
+                      onClick={() => setBanner("replace")}
+                      disabled={controlsLocked || replaceUsed}
+                    >
+                      <RepeatIcon size={14} />{" "}
+                      {replaceUsed
+                        ? t("interview.replaceUsed")
+                        : t("interview.replaceQuestion")}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+
+              <div
+                className="row"
+                style={{ gap: 16, alignItems: "center", flexWrap: "wrap" }}
+              >
+                {adapterMode === "openai" && wrappingUp ? (
+                  <div className="row" style={{ gap: 12, alignItems: "center" }}>
+                    <Spinner />
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>
+                      {t("interview.farewell")}
+                    </div>
+                  </div>
+                ) : adapterMode === "openai" ? (
+                  <>
+                    <div
+                      className="text-muted hide-sm"
+                      style={{ fontSize: 12, fontWeight: 600 }}
+                    >
+                      {muted
+                        ? t("interview.spaceToUnmute")
+                        : t("interview.spaceToMute")}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      aria-label={
+                        muted ? t("interview.unmute") : t("interview.mute")
+                      }
+                      aria-pressed={muted}
+                      className="room-mic"
+                      style={{
+                        ["--lvl" as string]: muted
+                          ? 0
+                          : Math.min(1, userLevel * 4).toFixed(3),
+                        width: 64,
+                        height: 64,
+                        borderRadius: "50%",
+                        border: "none",
+                        cursor: "pointer",
+                        background: muted
+                          ? "linear-gradient(135deg,#94A3B8,#475569)"
+                          : "linear-gradient(135deg,#FDA4AF,#F43F5E)",
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: muted
+                          ? "0 8px 22px rgba(71,85,105,0.35)"
+                          : "0 12px 28px rgba(244,63,94,0.35)",
+                        transition: "transform .15s ease",
+                      }}
+                    >
+                      {muted ? <MicOffIcon size={26} /> : <MicIcon size={26} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{
+                        padding: "14px 22px",
+                        fontSize: 14,
+                        borderColor: "rgba(244,63,94,0.4)",
+                        color: "#9F1239",
+                      }}
+                      onClick={handleEndEarly}
+                    >
+                      <XIcon size={14} /> {t("interview.endInterviewShort")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <MicButton
+                      recording={recording}
+                      size={72}
+                      onClick={() => {
+                        if (session.state === "student_turn") {
+                          session.startRecording();
+                        } else if (session.state === "student_recording") {
+                          session.finishRecording();
+                        }
+                      }}
+                      ariaLabel={t("interview.recording")}
+                      disabled={
+                        session.state !== "student_turn" &&
+                        session.state !== "student_recording"
+                      }
+                    >
+                      {recording ? (
+                        <div
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 4,
+                            background: "white",
+                          }}
+                        />
+                      ) : (
+                        <MicIcon size={26} />
+                      )}
+                    </MicButton>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ padding: "14px 22px", fontSize: 14 }}
+                      onClick={handleMockPrimary}
+                      disabled={aiSpeaking || processing}
+                    >
+                      {primaryLabel}
+                      <span className="icon-flip">
+                        <ArrowIcon />
+                      </span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2182,7 +2566,8 @@ export function InterviewRoomClient({
       {adapterError && (
         <div
           role="alert"
-          style={{
+          className={isForest ? "fr-error" : undefined}
+          style={isForest ? undefined : {
             position: "fixed",
             top: 80,
             insetInlineEnd: 32,
@@ -2203,13 +2588,16 @@ export function InterviewRoomClient({
               ? t("interview.atCapacity")
               : `${t("interview.connectionError")}: ${adapterError}`}
           </div>
-          <div className="text-muted" style={{ fontSize: 12, marginTop: 6, color: "#9F1239" }}>
+          <div
+            className={isForest ? "fr-error-hint" : "text-muted"}
+            style={isForest ? undefined : { fontSize: 12, marginTop: 6, color: "#9F1239" }}
+          >
             {t("interview.reconnectHint")}
           </div>
           <button
             type="button"
             className="btn btn-secondary"
-            style={{ marginTop: 10, padding: "8px 12px", fontSize: 12 }}
+            style={isForest ? undefined : { marginTop: 10, padding: "8px 12px", fontSize: 12 }}
             onClick={() => window.location.reload()}
           >
             {t("interview.reconnectPage")}
@@ -2225,7 +2613,8 @@ export function InterviewRoomClient({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            style={{
+            className={isForest ? "fr-overlay" : undefined}
+            style={isForest ? undefined : {
               position: "fixed",
               inset: 0,
               zIndex: 50,
@@ -2240,8 +2629,8 @@ export function InterviewRoomClient({
               initial={{ scale: 0.96, y: 8 }}
               animate={{ scale: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="card"
-              style={{
+              className={isForest ? "card fr-overlay-card" : "card"}
+              style={isForest ? undefined : {
                 padding: "32px 40px",
                 borderRadius: 24,
                 background: "rgba(255,255,255,0.98)",
@@ -2251,7 +2640,7 @@ export function InterviewRoomClient({
                 boxShadow: "0 30px 80px rgba(15,23,42,0.25)",
               }}
             >
-              <Spinner />
+              <Spinner forest={isForest} />
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800 }}>
                   {t("interview.wrappingUp")}

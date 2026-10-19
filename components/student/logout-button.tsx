@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "@/lib/i18n/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { clearCachedProfileInitial } from "@/lib/student/profile-initial";
 import { MOCK_MODE } from "@/lib/env";
 
-export function LogoutButton({ label }: { label: string }) {
+export function LogoutButton({ label, icon }: { label: string; icon?: ReactNode }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -31,6 +31,7 @@ export function LogoutButton({ label }: { label: string }) {
       onClick={() => void handleLogout()}
       disabled={pending}
     >
+      {icon}
       {label}
     </button>
   );

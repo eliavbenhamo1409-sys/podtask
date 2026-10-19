@@ -4,9 +4,12 @@ import { useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { Eyebrow } from "@/components/podtask/eyebrow";
+import { useTheme } from "@/components/providers/theme-provider";
 
 interface WelcomeHeaderProps {
   studentName: string;
+  /** Open (not completed) assignments; the forest greeting states it. */
+  openCount?: number;
 }
 
 type DayPart = "Morning" | "Noon" | "Evening" | "Night";
@@ -21,8 +24,9 @@ function dayPartFor(hour: number): DayPart {
   return "Night";
 }
 
-export function WelcomeHeader({ studentName }: WelcomeHeaderProps) {
+export function WelcomeHeader({ studentName, openCount }: WelcomeHeaderProps) {
   const t = useTranslations();
+  const { theme } = useTheme();
   // The server has no idea what time it is for the visitor, so it renders
   // the neutral greeting and the client swaps in the time-of-day one.
   const dayPart = useSyncExternalStore(
@@ -33,6 +37,22 @@ export function WelcomeHeader({ studentName }: WelcomeHeaderProps) {
   const eyebrow = dayPart
     ? `${t(`dashboard.greeting${dayPart}`)} · ${t("status.welcomeBack")}`
     : t("status.welcomeBack");
+
+  if (theme === "forest") {
+    // A plain greeting and one factual line; no time-of-day swap, no motion.
+    return (
+      <header className="fh-greet">
+        <h1 className="display">
+          {studentName
+            ? t("forestHome.greeting", { name: studentName })
+            : t("forestHome.greetingNoName")}
+        </h1>
+        {openCount !== undefined ? (
+          <p className="subtitle">{t("forestHome.openCount", { count: openCount })}</p>
+        ) : null}
+      </header>
+    );
+  }
 
   return (
     <motion.div

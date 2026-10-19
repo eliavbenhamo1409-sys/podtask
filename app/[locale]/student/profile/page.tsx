@@ -5,6 +5,9 @@ import { Eyebrow } from "@/components/podtask/eyebrow";
 import { getStudentProfile } from "@/lib/student/student-service-server";
 import { LogoutButton } from "@/components/student/logout-button";
 import { accountLabel, isUsernameEmail } from "@/lib/auth/username";
+import { ThemeChooser } from "@/components/student/theme-chooser";
+import { LogoutIcon } from "@/components/podtask/icons";
+import { getTheme } from "@/lib/theme/server";
 
 interface ProfilePageProps {
   params: Promise<{ locale: string }>;
@@ -36,6 +39,69 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
       value: profile.locale === "he" ? "עברית" : "English",
     },
   ];
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <StudentAppShell>
+        <div className="page fh-profile">
+          <header className="fh-head">
+            <h1 className="display">{t("forestHome.profile.title")}</h1>
+            <p className="subtitle">{t("forestHome.profile.subtitle")}</p>
+          </header>
+
+          <div className="fh-profile-grid">
+            <section className="card fh-card" aria-labelledby="fh-profile-details">
+              <h2 id="fh-profile-details" className="fh-card-title">
+                {t("forestHome.profile.details")}
+              </h2>
+              <div className="fh-profile-id">
+                <span className="avatar fh-profile-avatar" aria-hidden>
+                  {profile.avatarInitial}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="fh-profile-name">{profile.fullName}</div>
+                  <div className="fh-muted">
+                    <bdi>{account}</bdi>
+                  </div>
+                </div>
+              </div>
+              <dl className="fh-dl">
+                {fields.map((f) => (
+                  <div key={f.label} className="fh-dl-row">
+                    <dt>{f.label}</dt>
+                    <dd>
+                      <bdi>{f.value}</bdi>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+
+            <div className="fh-profile-side">
+              <section className="card fh-card" aria-labelledby="fh-profile-theme">
+                <h2 id="fh-profile-theme" className="fh-card-title">
+                  {t("theme.label")}
+                </h2>
+                <p className="fh-card-body">{t("forestHome.profile.themeBody")}</p>
+                <ThemeChooser />
+              </section>
+
+              <section className="card fh-card" aria-labelledby="fh-profile-account">
+                <h2 id="fh-profile-account" className="fh-card-title">
+                  {t("forestHome.profile.account")}
+                </h2>
+                <p className="fh-card-body">{t("forestHome.profile.logoutBody")}</p>
+                <LogoutButton
+                  label={t("profile.logout")}
+                  icon={<LogoutIcon size={18} aria-hidden />}
+                />
+              </section>
+            </div>
+          </div>
+        </div>
+      </StudentAppShell>
+    );
+  }
 
   return (
     <StudentAppShell>
@@ -96,6 +162,16 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="card" style={{ padding: 32, marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em", margin: 0 }}>
+            {t("theme.label")}
+          </h2>
+          <p className="text-muted" style={{ fontSize: 14, margin: "6px 0 18px" }}>
+            {t("forestHome.profile.themeBody")}
+          </p>
+          <ThemeChooser />
         </div>
 
         <div className="stack-actions" style={{ marginTop: 24 }}>

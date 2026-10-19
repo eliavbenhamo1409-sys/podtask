@@ -9,6 +9,8 @@ import { GlowOrb } from "@/components/podtask/glow-orb";
 import { ArrowIcon, BackIcon, ChevronIcon, SparkIcon } from "@/components/podtask/icons";
 import { recordConsent } from "@/lib/student/student-service";
 import type { CameraMode } from "@/lib/integrity/settings";
+import { useTheme } from "@/components/providers/theme-provider";
+import { ForestConsent } from "./forest-consent";
 
 interface ConsentClientProps {
   submissionId: string;
@@ -32,6 +34,7 @@ export function ConsentClient({
 }: ConsentClientProps) {
   const t = useTranslations();
   const router = useRouter();
+  const { theme } = useTheme();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -59,6 +62,24 @@ export function ConsentClient({
       setError(t("consent.error"));
       setPending(false);
     }
+  }
+
+  if (theme === "forest") {
+    return (
+      <ForestConsent
+        submissionId={submissionId}
+        version={version}
+        cameraOn={cameraOn}
+        activityMonitoring={activityMonitoring}
+        overlapCheck={overlapCheck}
+        paragraph2={paragraph2}
+        open={open}
+        onToggleOpen={() => setOpen((o) => !o)}
+        pending={pending}
+        error={error}
+        onAccept={() => void accept()}
+      />
+    );
   }
 
   return (

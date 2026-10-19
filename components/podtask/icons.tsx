@@ -423,3 +423,283 @@ export function ChevronIcon({ size = 18, ...props }: IconProps) {
     </svg>
   );
 }
+
+/* ---- Thin line icons (the "forest" theme uses these at stroke 1.8) ---- */
+
+function LineIcon({ size = 18, children, ...props }: IconProps & { children: React.ReactNode }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function GridIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+    </LineIcon>
+  );
+}
+
+export function PaletteIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z" />
+      <circle cx="7.5" cy="11" r="1" />
+      <circle cx="10" cy="7" r="1" />
+      <circle cx="14.5" cy="7" r="1" />
+    </LineIcon>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </LineIcon>
+  );
+}
+
+export function ListIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+    </LineIcon>
+  );
+}
+
+export function LeafIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15" />
+      <path d="M5 19 13 11" />
+    </LineIcon>
+  );
+}
+
+export function BarChartIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M6 20v-6M12 20V9M18 20V4" />
+    </LineIcon>
+  );
+}
+
+export function PieIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M21 12A9 9 0 1 1 12 3" />
+      <path d="M12 3v9h9a9 9 0 0 0-9-9Z" />
+    </LineIcon>
+  );
+}
+
+export function QuoteIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M10 7H6a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3" />
+      <path d="M20 7h-4a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h3v1a3 3 0 0 1-3 3" />
+    </LineIcon>
+  );
+}
+
+export function BulbIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M9 18h6M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z" />
+    </LineIcon>
+  );
+}
+
+export function ShieldIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3Z" />
+    </LineIcon>
+  );
+}
+
+export function FilePlusIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5M12 11v6M9 14h6" />
+    </LineIcon>
+  );
+}
+
+export function FileTextIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5M9 13h6M9 17h6" />
+    </LineIcon>
+  );
+}
+
+export function FileUpIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5M12 18v-6M9.5 14.5 12 12l2.5 2.5" />
+    </LineIcon>
+  );
+}
+
+export function BookIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2Z" />
+      <path d="M12 6.5v13" />
+    </LineIcon>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c.6-3.5 3.3-5.5 6.5-5.5s5.9 2 6.5 5.5" />
+      <path d="M15.5 4.8a3.5 3.5 0 0 1 0 6.4M17.5 14.8c2 .6 3.5 2.4 4 5.2" />
+    </LineIcon>
+  );
+}
+
+export function MessageIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.1A8 8 0 1 1 20 12Z" />
+    </LineIcon>
+  );
+}
+
+export function SettingsIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+    </LineIcon>
+  );
+}
+
+export function SendIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5 21 3Z" />
+    </LineIcon>
+  );
+}
+
+export function VolumeIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M11 5 6 9H3v6h3l5 4V5Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+    </LineIcon>
+  );
+}
+
+export function MoreIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M12 5h.01M12 12h.01M12 19h.01" strokeWidth="2.6" />
+    </LineIcon>
+  );
+}
+
+export function MonitorIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="1.5" />
+      <path d="M8 20h8M12 16v4" />
+    </LineIcon>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </LineIcon>
+  );
+}
+
+export function SkipIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M6 5v14l10-7L6 5Z" />
+      <path d="M19 5v14" />
+    </LineIcon>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />
+    </LineIcon>
+  );
+}
+
+export function RefreshIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M20 11a8 8 0 0 0-14.8-3.5M4 4v4h4" />
+      <path d="M4 13a8 8 0 0 0 14.8 3.5M20 20v-4h-4" />
+    </LineIcon>
+  );
+}
+
+export function CameraIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M15 10.5 20 7v10l-5-3.5" />
+      <rect x="3" y="6" width="12" height="12" rx="2" />
+    </LineIcon>
+  );
+}
+
+export function UserIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c.8-4 4-6.5 8-6.5s7.2 2.5 8 6.5" />
+    </LineIcon>
+  );
+}
+
+export function LogoutIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+      <path d="M10 16l-4-4 4-4M6 12h10" />
+    </LineIcon>
+  );
+}
+
+export function HistoryIcon(props: IconProps) {
+  return (
+    <LineIcon {...props}>
+      <path d="M3 12a9 9 0 1 0 2.64-6.36L3 8.3" />
+      <path d="M3 3.5v4.8h4.8" />
+      <path d="M12 7.5V12l3 2" />
+    </LineIcon>
+  );
+}

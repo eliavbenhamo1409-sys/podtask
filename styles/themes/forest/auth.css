@@ -1,0 +1,409 @@
+/* ==========================================================================
+   Forest theme: auth screens (login, not-found) and the student route
+   loading skeleton. Scoped under [data-theme="forest"]; tokens in base.css.
+
+   Frame shared by login and not-found: the "Podtask" wordmark sits on the
+   paper above one white hairline card. No shadow, glass or glow.
+
+   The login markup (app/[locale]/login/login-client.tsx) is owned elsewhere
+   and carries many inline styles, so this file reaches it structurally and
+   uses !important only where an inline value has to give way. It is written
+   for both the current card and the restructured one with the student /
+   lecturer tabs (.auth-tabs / .auth-tab).
+   ========================================================================== */
+
+/* ---- Login: page frame ------------------------------------------------- */
+
+/* Only the login screen has a password field. */
+[data-theme="forest"] .screen:has(input[type="password"]) > div:last-child {
+  padding: 48px 24px !important;
+}
+
+[data-theme="forest"] .screen:has(input[type="password"]) .card-hero {
+  position: relative;
+  /* .card-hero clips its decoration; the wordmark lives outside the box. */
+  overflow: visible;
+  max-width: 460px !important;
+  padding: 36px 40px 34px !important;
+  /* Room for the wordmark, which is lifted above the card. */
+  margin-top: 74px;
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--line));
+  border-radius: var(--radius-card);
+}
+
+/* Wordmark above the card: the block that holds it is taken out of the
+   card's flow and anchored just above the card's top edge. */
+[data-theme="forest"] .screen:has(input[type="password"]) .card-hero div:has(> .wordmark) {
+  position: absolute;
+  bottom: calc(100% + 26px);
+  left: 0;
+  right: 0;
+  margin: 0 !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) .wordmark {
+  font-size: 34px;
+}
+/* The letter-spaced "Student Studio" line: the forest shell names areas in
+   the top bar instead, and the tabs already say which entrance this is. */
+[data-theme="forest"] .screen:has(input[type="password"]) .wordmark + div {
+  display: none;
+}
+/* The eyebrow repeated the title word for word ("Welcome back" twice). */
+[data-theme="forest"] .screen:has(input[type="password"]) .card-hero .eyebrow {
+  display: none;
+}
+
+/* ---- Login: heading ---------------------------------------------------- */
+
+[data-theme="forest"] .screen:has(input[type="password"]) .card-hero .title {
+  margin-top: 0 !important;
+  font-size: 30px !important;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) .card-hero .subtitle {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 1.55;
+  text-wrap: balance;
+}
+
+/* ---- Login: student / lecturer tabs (segmented control) ---------------- */
+
+[data-theme="forest"] .auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 30px;
+  border-radius: var(--radius-sm);
+  background: rgb(var(--surface-2));
+  border: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .auth-tab {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: rgb(var(--muted));
+  box-shadow: none;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+[data-theme="forest"] .auth-tab:hover {
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .auth-tab[aria-selected="true"] {
+  background: rgb(var(--white));
+  border-color: rgb(var(--line));
+  color: rgb(var(--cyan));
+  font-weight: 700;
+  box-shadow: none;
+}
+[data-theme="forest"] .auth-tab:focus-visible {
+  outline: 2px solid rgb(var(--cyan));
+  outline-offset: 1px;
+}
+[data-theme="forest"] .auth-tab:disabled {
+  opacity: 0.55;
+}
+
+/* ---- Login: form ------------------------------------------------------- */
+
+[data-theme="forest"] .screen:has(input[type="password"]) form {
+  margin-top: 28px !important;
+}
+/* Field labels: plain 14px text (letter-spaced capitals read badly in
+   Hebrew and look shouty in English). */
+[data-theme="forest"] .screen:has(input[type="password"]) form label {
+  gap: 8px !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form label > span:first-child {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: rgb(var(--ink-2)) !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form label + label {
+  margin-top: 18px !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form .input {
+  min-height: 48px;
+  font-size: 16px;
+}
+/* A left-to-right field (the username) still lines up with the right-hand
+   labels and the password field of a Hebrew form. */
+[data-theme="forest"][dir="rtl"] .screen:has(input[type="password"]) form .input[dir="ltr"] {
+  text-align: right;
+}
+
+/* Error (and the magic-link notice): anything rendered above the submit. */
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(~ .btn-primary) {
+  margin-top: 18px !important;
+  padding: 11px 14px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid rgb(var(--danger) / 0.22);
+  background: rgb(var(--danger-bg)) !important;
+  color: rgb(var(--danger)) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.5;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(~ .btn-primary):is([style*="4, 120, 87"], [style*="047857"]) {
+  border-color: rgb(var(--cyan) / 0.2);
+  background: rgb(var(--accent-bg)) !important;
+  color: rgb(var(--cyan)) !important;
+}
+
+[data-theme="forest"] .screen:has(input[type="password"]) form .btn-primary {
+  margin-top: 26px !important;
+  font-size: 16px;
+  padding: 14px 24px;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form .btn-secondary {
+  font-size: 16px;
+  padding: 13px 24px;
+}
+
+/* Hints under the button (accounts, guest, lecturer): quiet, readable. */
+[data-theme="forest"] .screen:has(input[type="password"]) form > .btn-primary ~ div:not(:has(*)) {
+  margin-top: 12px !important;
+  font-size: 13px !important;
+  line-height: 1.55;
+  color: rgb(var(--muted)) !important;
+  text-wrap: balance;
+}
+
+/* "or" divider */
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(> span) {
+  margin: 26px 0 18px !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(> span) > span {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+/* Guest entrance: a full-width secondary button, not a bare link. */
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(> span) + .btn-ghost {
+  padding: 13px 24px;
+  border: 1px solid rgb(var(--ink) / 0.42);
+  border-radius: 6px;
+  background: rgb(var(--white));
+  color: rgb(var(--ink)) !important;
+  font-size: 16px;
+  font-weight: 600 !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form > div:has(> span) + .btn-ghost:hover {
+  background: rgb(var(--surface-2));
+  border-color: rgb(var(--ink) / 0.7);
+}
+
+/* Student / lecturer switch link of the card without tabs. */
+[data-theme="forest"] .screen:has(input[type="password"]) form > .btn-ghost:last-child {
+  margin-top: 18px !important;
+  padding: 10px 16px;
+  color: rgb(var(--cyan)) !important;
+  font-size: 15px;
+  font-weight: 600 !important;
+}
+[data-theme="forest"] .screen:has(input[type="password"]) form > .btn-ghost:last-child:hover {
+  color: rgb(var(--accent-hover)) !important;
+}
+
+/* ---- Not-found (forest markup in app/[locale]/not-found.tsx) ----------- */
+
+[data-theme="forest"] .fa-shell {
+  min-height: 100vh;
+  background: rgb(var(--bg));
+}
+[data-theme="forest"] .fa-shell-inner {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 48px 24px;
+}
+[data-theme="forest"] .fa-brand {
+  display: flex;
+  justify-content: center;
+}
+[data-theme="forest"] .fa-brand .wordmark {
+  font-size: 34px;
+}
+[data-theme="forest"] .fa-card {
+  width: 100%;
+  max-width: 520px;
+  padding: 44px 44px 40px;
+}
+[data-theme="forest"] .fa-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fa-sub {
+  margin: 10px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgb(var(--cyan));
+  text-decoration: none;
+}
+[data-theme="forest"] .fa-link:hover {
+  color: rgb(var(--accent-hover));
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+[data-theme="forest"] .fa-nf {
+  text-align: center;
+}
+[data-theme="forest"] .fa-nf .fa-sub {
+  max-width: 400px;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+[data-theme="forest"] .fa-nf-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .fa-nf-code {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .fa-nf-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 30px;
+  padding-top: 28px;
+  border-top: 1px solid rgb(var(--line-2));
+}
+[data-theme="forest"] .fa-nf-cta {
+  width: 100%;
+  max-width: 320px;
+  justify-content: center;
+  font-size: 16px;
+  padding: 14px 24px;
+}
+
+/* ---- Loading skeleton (app/[locale]/student/loading.tsx) --------------- */
+
+[data-theme="forest"] .skeleton {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgb(236 234 227) 25%,
+    rgb(244 243 238) 50%,
+    rgb(236 234 227) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+[data-theme="forest"] .skel-page .skel-eyebrow {
+  height: 12px !important;
+}
+[data-theme="forest"] .skel-page .skel-heading {
+  height: 40px !important;
+}
+/* Blocks read as cards that are still filling in. */
+[data-theme="forest"] .skel-page .skel-block {
+  border-radius: var(--radius-card) !important;
+  border: 1px solid rgb(var(--line-2));
+  background: linear-gradient(
+    90deg,
+    rgb(240 239 233) 25%,
+    rgb(246 245 240) 50%,
+    rgb(240 239 233) 75%
+  );
+  background-size: 200% 100%;
+}
+[data-theme="forest"] .skel-page .skel-band {
+  height: 200px !important;
+  margin-top: 36px !important;
+}
+[data-theme="forest"] .skel-page .skel-grid {
+  gap: 24px;
+  margin-top: 24px !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="forest"] .skeleton {
+    animation: none;
+  }
+}
+
+/* ---- Phones ------------------------------------------------------------ */
+
+@media (max-width: 760px) {
+  [data-theme="forest"] .screen:has(input[type="password"]) > div:last-child {
+    padding: 32px 16px !important;
+  }
+  [data-theme="forest"] .screen:has(input[type="password"]) .card-hero {
+    padding: 28px 20px 26px !important;
+    margin-top: 62px;
+  }
+  [data-theme="forest"] .screen:has(input[type="password"]) .card-hero div:has(> .wordmark) {
+    bottom: calc(100% + 20px);
+  }
+  [data-theme="forest"] .screen:has(input[type="password"]) .wordmark,
+  [data-theme="forest"] .fa-brand .wordmark {
+    font-size: 30px;
+  }
+  [data-theme="forest"] .screen:has(input[type="password"]) .card-hero .title,
+  [data-theme="forest"] .fa-title {
+    font-size: 26px !important;
+  }
+  [data-theme="forest"] .auth-tabs {
+    margin-bottom: 24px;
+  }
+  [data-theme="forest"] .auth-tab {
+    font-size: 14px;
+  }
+
+  [data-theme="forest"] .fa-shell-inner {
+    gap: 20px;
+    padding: 32px 16px;
+  }
+  [data-theme="forest"] .fa-card {
+    padding: 32px 20px 28px;
+  }
+  [data-theme="forest"] .fa-nf-cta {
+    max-width: none;
+  }
+
+  [data-theme="forest"] .skel-page .skel-heading {
+    height: 32px !important;
+  }
+  [data-theme="forest"] .skel-page .skel-band {
+    height: 160px !important;
+  }
+}

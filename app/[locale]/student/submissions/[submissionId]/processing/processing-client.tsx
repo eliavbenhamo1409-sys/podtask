@@ -7,7 +7,10 @@ import { useRouter } from "@/lib/i18n/navigation";
 import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Steps } from "@/components/podtask/steps";
 import { GlowOrb } from "@/components/podtask/glow-orb";
-import { CheckIcon } from "@/components/podtask/icons";
+import { AlertIcon, CheckIcon, FileTextIcon } from "@/components/podtask/icons";
+import { JourneySteps } from "@/components/student/journey-steps";
+import { useTheme } from "@/components/providers/theme-provider";
+import { formatBytes } from "@/lib/utils";
 import {
   observeSubmissionProcessing,
   prepareSubmission,
@@ -45,6 +48,9 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
   const [status, setStatus] = useState<SubmissionStatus>("uploaded");
   const [step, setStep] = useState(0);
   const [errored, setErrored] = useState(false);
+  const { theme } = useTheme();
+  // Name and size of the uploaded file, shown by the forest layout only.
+  const [doc, setDoc] = useState<{ name: string; size: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +59,11 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
     const stop = observeSubmissionProcessing(submissionId, (sub) => {
       if (cancelled) return;
       setStatus(sub.status);
+      setDoc((prev) =>
+        prev?.name === sub.originalFilename && prev.size === sub.fileSizeBytes
+          ? prev
+          : { name: sub.originalFilename, size: sub.fileSizeBytes },
+      );
       if (sub.status === "failed") {
         setErrored(true);
         return;
@@ -87,6 +98,17 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
     t("processing.stepsQuestions"),
     t("processing.stepsStudio"),
   ];
+
+  if (theme === "forest") {
+    return (
+      <ForestProcessing
+        status={status}
+        stepIdx={stepIdx}
+        errored={errored}
+        doc={doc}
+      />
+    );
+  }
 
   if (errored) {
     return (
@@ -219,6 +241,144 @@ export function ProcessingClient({ submissionId }: ProcessingClientProps) {
           <div style={{ marginTop: 40 }}>
             <Steps current={Math.min(stepIdx, 3)} items={stepLabels} />
           </div>
+        </div>
+      </div>
+    </StudentAppShell>
+  );
+}
+
+const FOREST_ROWS = ["s1", "s2", "s3", "s4"] as const;
+const FOREST_NEXT = [1, 2, 3] as const;
+
+/**
+ * Forest theme: a calm checklist driven by the real submission status (no
+ * orb, no timed messages), next to what follows once the questions exist.
+ */
+function ForestProcessing({
+  status,
+  stepIdx,
+  errored,
+  doc,
+}: {
+  status: SubmissionStatus;
+  stepIdx: number;
+  errored: boolean;
+  doc: { name: string; size: number } | null;
+}) {
+  const tf = useTranslations("forestJourney.processing");
+  const ready = status === "interview_ready";
+  // 0..2 = that row is in progress; 3+ (interview_ready or later) = all done.
+  const allDone = ready || stepIdx >= 3;
+  const rowState = (i: number) =>
+    allDone || i < stepIdx ? "done" : i === stepIdx ? "active" : "pending";
+  const activeKey = allDone ? null : FOREST_ROWS[Math.max(0, stepIdx)];
+
+  return (
+    <StudentAppShell blobsVariant="studio">
+      <div className="page jr-page jr-processing">
+        <div className="jr-proc-head">
+          <div>
+            <h1 className="display">{errored ? tf("errorTitle") : tf("title")}</h1>
+            <p className="subtitle">{errored ? tf("errorBody") : tf("subtitle")}</p>
+          </div>
+          <JourneySteps stage="prepare" className="jr-stepper" />
+        </div>
+
+        <div className={`jr-proc-grid${errored ? " solo" : ""}`}>
+          <section className="card jr-card jr-proc-card" aria-labelledby="jr-proc-title">
+            <h2 id="jr-proc-title" className="jr-h2">
+              {tf("listTitle")}
+            </h2>
+            <div className="jr-checklist">
+              {doc && (
+                <div className="jr-proc-doc">
+                  <FileTextIcon size={26} aria-hidden />
+                  <div>
+                    <div className="jr-proc-doc-name">
+                      <bdi>{doc.name}</bdi>
+                    </div>
+                    {doc.size > 0 && (
+                      <div className="jr-proc-doc-sub">
+                        <bdi>{formatBytes(doc.size)}</bdi>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {errored ? (
+                <div className="jr-proc-error" role="alert">
+                  <AlertIcon size={20} aria-hidden />
+                  <span>{tf("errorRow")}</span>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => location.reload()}
+                  >
+                    {tf("tryAgain")}
+                  </button>
+                </div>
+              ) : (
+                <ol className="jr-check-rows">
+                  {FOREST_ROWS.map((key, i) => {
+                    const state = rowState(i);
+                    return (
+                      <li key={key} className={`jr-check jr-check-${state}`}>
+                        <span className="jr-check-mark" aria-hidden>
+                          {state === "done" && <CheckIcon size={13} />}
+                        </span>
+                        <span className="jr-check-label">{tf(key)}</span>
+                        <span className="sr-only">
+                          {tf(
+                            state === "done"
+                              ? "stateDone"
+                              : state === "active"
+                                ? "stateActive"
+                                : "statePending",
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+            {!errored && (
+              <div className={`jr-proc-foot${ready ? " ready" : ""}`} aria-live="polite">
+                {ready ? (
+                  <>
+                    <CheckIcon size={18} aria-hidden /> {tf("ready")}
+                  </>
+                ) : (
+                  <>
+                    {activeKey && <span className="sr-only">{tf(activeKey)}. </span>}
+                    {tf("note")}
+                  </>
+                )}
+              </div>
+            )}
+          </section>
+
+          {!errored && (
+            <aside className="card jr-card jr-proc-next" aria-labelledby="jr-proc-next-title">
+              <h2 id="jr-proc-next-title" className="jr-h2">
+                {tf("nextTitle")}
+              </h2>
+              <p className="jr-muted">{tf("nextSubtitle")}</p>
+              <ol className="jr-numbered">
+                {FOREST_NEXT.map((n) => (
+                  <li key={n}>
+                    <span className="jr-num" aria-hidden>
+                      {n}
+                    </span>
+                    <div>
+                      <div className="jr-num-title">{tf(`n${n}Title`)}</div>
+                      <p>{tf(`n${n}Body`)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </aside>
+          )}
         </div>
       </div>
     </StudentAppShell>

@@ -1,0 +1,688 @@
+/* Forest theme: student-home screens. Scoped under [data-theme="forest"]; see base.css for tokens. */
+/* Dashboard, assignments, history, profile and help (class prefix .fh-). */
+
+/* ---- Page header: title + one muted line ---- */
+[data-theme="forest"] .fh-greet,
+[data-theme="forest"] .fh-head {
+  margin-bottom: 32px;
+}
+[data-theme="forest"] .fh-greet .display,
+[data-theme="forest"] .fh-head .display {
+  margin: 0 0 8px;
+  font-size: clamp(32px, 1.4vw + 20px, 44px);
+}
+[data-theme="forest"] .fh-greet .subtitle,
+[data-theme="forest"] .fh-head .subtitle {
+  margin: 0;
+  max-width: 720px;
+  font-size: 19px;
+  line-height: 1.55;
+  color: rgb(var(--ink-2));
+}
+
+/* ---- Self-practice band (dashboard) ---- */
+[data-theme="forest"] .fh-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px 48px;
+  padding: 34px 36px;
+  background: rgb(var(--accent-bg) / 0.5);
+  border: 1px solid rgb(var(--line-2));
+  border-radius: var(--radius-card);
+}
+[data-theme="forest"] .fh-band-text {
+  min-width: 0;
+}
+[data-theme="forest"] .fh-band .eyebrow {
+  font-size: 15px;
+}
+[data-theme="forest"] .fh-band-title {
+  margin: 8px 0 10px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-band-body {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.55;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fh-band-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  flex: 0 0 300px;
+}
+[data-theme="forest"] .fh-band-cta {
+  justify-content: center;
+  gap: 14px;
+  font-size: 18px;
+  padding: 16px 28px;
+}
+[data-theme="forest"] .fh-band-link {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+  text-decoration: none;
+}
+[data-theme="forest"] .fh-band-link:hover {
+  color: rgb(var(--cyan));
+}
+
+/* ---- Section head with tabs (dashboard, assignments, history) ---- */
+[data-theme="forest"] .fh-assign {
+  margin-top: 52px;
+}
+[data-theme="forest"] .fh-head + .fh-assign {
+  margin-top: 0;
+}
+[data-theme="forest"] .fh-assign-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fh-assign-head.no-title {
+  justify-content: flex-start;
+}
+[data-theme="forest"] .fh-section-title {
+  margin: 0 0 16px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-section-title.fh-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fh-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+[data-theme="forest"] .fh-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: -1px;
+  padding: 12px 24px 15px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+[data-theme="forest"] .fh-tab:hover {
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-tab.active {
+  color: rgb(var(--cyan));
+  border-bottom-color: rgb(var(--cyan));
+  font-weight: 700;
+}
+[data-theme="forest"] .fh-tab-count {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgb(var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="forest"] .fh-tab.active .fh-tab-count {
+  color: rgb(var(--cyan));
+  font-weight: 700;
+}
+[data-theme="forest"] .fh-empty {
+  margin: 0;
+  padding: 36px 0;
+  border-bottom: 1px solid rgb(var(--line));
+  text-align: center;
+  font-size: 16px;
+  color: rgb(var(--muted));
+}
+
+/* ---- Table ---- */
+[data-theme="forest"] .fh-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+[data-theme="forest"] .fh-table th {
+  padding: 24px 16px 14px;
+  border-bottom: 1px solid rgb(var(--line));
+  text-align: start;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgb(var(--muted));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fh-table td {
+  height: 76px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgb(var(--line));
+  font-size: 16.5px;
+  color: rgb(var(--ink-2));
+  vertical-align: middle;
+}
+[data-theme="forest"] .fh-table .fh-c-title {
+  width: 34%;
+  position: relative;
+  padding-inline-start: 72px;
+}
+[data-theme="forest"] .fh-table .fh-c-course {
+  width: 21%;
+}
+[data-theme="forest"] .fh-table .fh-c-date {
+  width: 13%;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="forest"] .fh-table .fh-c-status {
+  width: 17%;
+}
+[data-theme="forest"] .fh-table .fh-c-action {
+  width: 15%;
+}
+[data-theme="forest"] .fh-doc {
+  position: absolute;
+  inset-inline-start: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fh-row-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-m-only {
+  display: none;
+}
+[data-theme="forest"] .fh-row {
+  position: relative;
+  transition: background 0.15s ease;
+}
+@media (hover: hover) {
+  [data-theme="forest"] .fh-row:hover {
+    background: rgb(var(--white) / 0.7);
+  }
+}
+/* The whole row opens its action (the link stays the only focus stop). */
+[data-theme="forest"] .fh-row .fh-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* Status: small dot + matching text */
+[data-theme="forest"] .fh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+[data-theme="forest"] .fh-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+[data-theme="forest"] .fh-status.tone-ok {
+  color: rgb(var(--cyan-bright));
+}
+[data-theme="forest"] .fh-status.tone-ok .fh-dot {
+  background: rgb(var(--ok));
+}
+[data-theme="forest"] .fh-status.tone-amber {
+  color: rgb(var(--amber-ink));
+}
+[data-theme="forest"] .fh-status.tone-amber .fh-dot {
+  background: rgb(var(--amber));
+}
+[data-theme="forest"] .fh-status.tone-grey {
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fh-status.tone-grey .fh-dot {
+  background: rgb(var(--muted) / 0.55);
+}
+[data-theme="forest"] .fh-status.tone-danger {
+  color: rgb(var(--pink-rose));
+}
+[data-theme="forest"] .fh-status.tone-danger .fh-dot {
+  background: rgb(var(--danger));
+}
+
+/* Action: green text link with a thin forward arrow at the far end */
+[data-theme="forest"] .fh-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: rgb(var(--cyan));
+  text-decoration: none;
+}
+[data-theme="forest"] .fh-link:hover {
+  color: rgb(var(--accent-hover));
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+[data-theme="forest"] .fh-arrow {
+  display: inline-flex;
+  flex: none;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-arrow svg {
+  stroke-width: 1.7;
+}
+
+/* History: course is the widest text column, length is short */
+[data-theme="forest"] .fh-table-history .fh-c-title {
+  width: 36%;
+}
+[data-theme="forest"] .fh-table-history .fh-c-course {
+  width: 23%;
+}
+[data-theme="forest"] .fh-table-history .fh-c-date {
+  width: 14%;
+}
+[data-theme="forest"] .fh-table-history .fh-c-status {
+  width: 11%;
+}
+[data-theme="forest"] .fh-table-history .fh-c-action {
+  width: 16%;
+}
+
+/* ---- Cards (profile, help, empty states) ---- */
+[data-theme="forest"] .fh-card {
+  padding: 30px 32px;
+}
+[data-theme="forest"] .fh-card-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-card-body {
+  margin: 0 0 20px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fh-muted {
+  font-size: 15px;
+  color: rgb(var(--muted));
+  overflow-wrap: anywhere;
+}
+[data-theme="forest"] .fh-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 48px 32px;
+  text-align: center;
+}
+[data-theme="forest"] .fh-empty-card p {
+  margin: 0;
+  max-width: 460px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: rgb(var(--ink-2));
+}
+
+/* ---- Profile ---- */
+[data-theme="forest"] .fh-profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  gap: 24px;
+  align-items: start;
+}
+[data-theme="forest"] .fh-profile-side {
+  display: grid;
+  gap: 24px;
+}
+[data-theme="forest"] .fh-profile-id {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 22px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fh-profile-avatar {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  font-size: 24px;
+}
+[data-theme="forest"] .fh-profile-name {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+  margin: 0;
+}
+[data-theme="forest"] .fh-dl-row {
+  padding: 18px 0;
+  border-bottom: 1px solid rgb(var(--line));
+  min-width: 0;
+}
+[data-theme="forest"] .fh-dl-row:nth-last-child(-n + 2) {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+[data-theme="forest"] .fh-dl dt {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fh-dl dd {
+  margin: 6px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  overflow-wrap: anywhere;
+}
+[data-theme="forest"] .fh-profile .theme-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+[data-theme="forest"] .fh-profile .theme-card {
+  padding: 14px 16px;
+  border-color: rgb(var(--border-strong));
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+[data-theme="forest"] .fh-profile .theme-card:hover {
+  background: rgb(var(--surface-2));
+}
+[data-theme="forest"] .fh-profile .theme-card[aria-checked="true"] {
+  border-color: rgb(var(--cyan));
+  background: rgb(var(--accent-bg) / 0.55);
+  color: rgb(var(--cyan));
+}
+
+/* ---- Help ---- */
+[data-theme="forest"] .fh-help-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  gap: 24px;
+  align-items: start;
+}
+[data-theme="forest"] .fh-list,
+[data-theme="forest"] .fh-how-list {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+[data-theme="forest"] .fh-list-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 22px 0;
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fh-list-row:last-child {
+  padding-bottom: 4px;
+}
+[data-theme="forest"] .fh-list-icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fh-list-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fh-list-body {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fh-list-link {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 16px;
+}
+[data-theme="forest"] .fh-list-link .fh-arrow {
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .fh-how-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+}
+[data-theme="forest"] .fh-how-row + .fh-how-row {
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fh-how-num {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 15px;
+  font-weight: 700;
+}
+[data-theme="forest"] .fh-how .fh-list-title {
+  margin-top: 4px;
+}
+
+/* ---- Narrower desktops ---- */
+@media (max-width: 1100px) {
+  [data-theme="forest"] .fh-profile-grid,
+  [data-theme="forest"] .fh-help-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-theme="forest"] .fh-table .fh-c-title {
+    padding-inline-start: 56px;
+  }
+  [data-theme="forest"] .fh-doc {
+    inset-inline-start: 16px;
+  }
+}
+
+/* ---- Phones: stacked band, full-width tabs, table rows become cards ---- */
+@media (max-width: 760px) {
+  [data-theme="forest"] .fh-greet,
+  [data-theme="forest"] .fh-head {
+    margin-bottom: 24px;
+  }
+  [data-theme="forest"] .fh-greet .subtitle,
+  [data-theme="forest"] .fh-head .subtitle {
+    font-size: 17px;
+  }
+
+  [data-theme="forest"] .fh-band {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 24px 20px;
+  }
+  [data-theme="forest"] .fh-band-title {
+    font-size: 24px;
+  }
+  [data-theme="forest"] .fh-band-body {
+    font-size: 16px;
+  }
+  [data-theme="forest"] .fh-band-actions {
+    flex-basis: auto;
+  }
+  [data-theme="forest"] .fh-band-link {
+    align-self: center;
+  }
+
+  [data-theme="forest"] .fh-assign {
+    margin-top: 40px;
+  }
+  [data-theme="forest"] .fh-section-title {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+  [data-theme="forest"] .fh-tabs {
+    width: 100%;
+    gap: 0;
+  }
+  [data-theme="forest"] .fh-tab {
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 6px 13px;
+    font-size: 16px;
+  }
+  [data-theme="forest"] .fh-tab-count {
+    font-size: 14px;
+  }
+
+  /* Keep the column headers for screen readers only. */
+  [data-theme="forest"] .fh-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  [data-theme="forest"] .fh-table,
+  [data-theme="forest"] .fh-table tbody {
+    display: block;
+  }
+  [data-theme="forest"] .fh-table tr.fh-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px auto minmax(0, 1fr);
+    align-items: center;
+    padding: 18px 0;
+    border-bottom: 1px solid rgb(var(--line));
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td {
+    display: block;
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    font-size: 15px;
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td.fh-c-title {
+    grid-column: 1 / -1;
+    width: auto;
+    padding-inline-start: 36px;
+  }
+  [data-theme="forest"] .fh-doc {
+    inset-inline-start: 0;
+    top: 1px;
+    transform: none;
+  }
+  [data-theme="forest"] .fh-doc svg {
+    width: 22px;
+    height: 22px;
+  }
+  [data-theme="forest"] .fh-row-title {
+    font-size: 16.5px;
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td.fh-c-course {
+    grid-column: 2 / -1;
+    margin-top: 2px;
+    color: rgb(var(--muted));
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td.fh-c-date {
+    grid-column: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    white-space: nowrap;
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td.fh-c-status {
+    grid-column: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    margin-inline-start: 18px;
+    min-width: 0;
+  }
+  [data-theme="forest"] .fh-m-only {
+    display: inline-block;
+    flex: none;
+    color: rgb(var(--muted));
+  }
+  [data-theme="forest"] .fh-table tr.fh-row > td.fh-c-action {
+    grid-column: 2 / -1;
+    margin-top: 12px;
+  }
+  [data-theme="forest"] .fh-table .fh-link {
+    display: inline-flex;
+    justify-content: flex-start;
+    gap: 10px;
+    font-size: 15.5px;
+  }
+  [data-theme="forest"] .fh-table .fh-link .fh-arrow {
+    color: rgb(var(--cyan));
+  }
+
+  [data-theme="forest"] .fh-card {
+    padding: 22px 20px;
+  }
+  [data-theme="forest"] .fh-card-title {
+    font-size: 20px;
+  }
+  [data-theme="forest"] .fh-dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-theme="forest"] .fh-dl-row:nth-last-child(2) {
+    border-bottom: 1px solid rgb(var(--line));
+    padding-bottom: 18px;
+  }
+  [data-theme="forest"] .fh-profile-avatar {
+    width: 52px;
+    height: 52px;
+    font-size: 20px;
+  }
+  [data-theme="forest"] .fh-profile .theme-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-theme="forest"] .fh-list-row {
+    gap: 14px;
+    padding: 18px 0;
+  }
+  [data-theme="forest"] .fh-list-body {
+    font-size: 15px;
+  }
+}

@@ -15,6 +15,8 @@ import {
   getLecturerProfile,
 } from "@/lib/lecturer/lecturer-service-server";
 import { formatTime } from "@/lib/utils";
+import { getTheme } from "@/lib/theme/server";
+import { ForestInterview } from "@/components/lecturer/forest/interview";
 
 interface PageProps {
   params: Promise<{ locale: string; interviewId: string }>;
@@ -51,6 +53,21 @@ export default async function LecturerInterviewPage({ params }: PageProps) {
   if (!data) notFound();
   const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
   const report = data.report;
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <LecturerShell
+        initial={profile?.avatarInitial}
+        crumbs={[
+          { label: t("forestLecturer.navOverview"), href: "/lecturer" },
+          { label: data.assignment.title, href: `/lecturer/assignments/${data.assignment.id}` },
+          { label: data.student.fullName },
+        ]}
+      >
+        <ForestInterview data={data} locale={locale} />
+      </LecturerShell>
+    );
+  }
 
   return (
     <LecturerShell initial={profile?.avatarInitial}>

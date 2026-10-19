@@ -15,6 +15,8 @@ import {
 } from "@/lib/lecturer/lecturer-service-server";
 import type { LecturerStudentRow } from "@/lib/lecturer/types";
 import { formatTime } from "@/lib/utils";
+import { getTheme } from "@/lib/theme/server";
+import { ForestAssignment } from "@/components/lecturer/forest/assignment";
 
 interface PageProps {
   params: Promise<{ locale: string; assignmentId: string }>;
@@ -53,6 +55,21 @@ export default async function LecturerAssignmentPage({ params }: PageProps) {
   if (!detail) notFound();
   const a = detail.assignment;
   const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" });
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <LecturerShell
+        initial={profile?.avatarInitial}
+        crumbs={[
+          { label: t("forestLecturer.navOverview"), href: "/lecturer" },
+          { label: a.courseName },
+          { label: a.title },
+        ]}
+      >
+        <ForestAssignment detail={detail} locale={locale} />
+      </LecturerShell>
+    );
+  }
 
   return (
     <LecturerShell initial={profile?.avatarInitial}>

@@ -14,6 +14,8 @@ import {
 } from "@/components/podtask/icons";
 import { getSubmissionLobby } from "@/lib/student/student-service-server";
 import { InterviewLanguagePicker } from "./interview-language-picker";
+import { getTheme } from "@/lib/theme/server";
+import { ForestLobby } from "./forest-lobby";
 
 interface LobbyPageProps {
   params: Promise<{ locale: string; submissionId: string }>;
@@ -61,6 +63,21 @@ export default async function LobbyPage({ params }: LobbyPageProps) {
   const nextHref = requireConsent
     ? `/student/submissions/${submissionId}/consent`
     : `/student/submissions/${submissionId}/mic-test`;
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <StudentAppShell blobsVariant="studio">
+        <ForestLobby
+          locale={locale}
+          submission={lobby.submission}
+          assignment={lobby.assignment}
+          interview={lobby.interview}
+          topics={planTopics.length > 0 ? planTopics : lobby.assignment.topics}
+          nextHref={nextHref}
+        />
+      </StudentAppShell>
+    );
+  }
 
   return (
     <StudentAppShell blobsVariant="studio">

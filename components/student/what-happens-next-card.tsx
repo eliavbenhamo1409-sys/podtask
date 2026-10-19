@@ -11,6 +11,7 @@ import {
   SparkIcon,
   UploadIcon,
 } from "@/components/podtask/icons";
+import { useTheme } from "@/components/providers/theme-provider";
 
 interface Step {
   num: string;
@@ -21,10 +22,14 @@ interface Step {
 
 interface WhatHappensNextCardProps {
   uploadHref: string;
+  /** Estimated conversation length; only the forest layout shows it. */
+  minutes?: number;
 }
 
-export function WhatHappensNextCard({ uploadHref }: WhatHappensNextCardProps) {
+export function WhatHappensNextCard({ uploadHref, minutes }: WhatHappensNextCardProps) {
   const t = useTranslations();
+  const { theme } = useTheme();
+  if (theme === "forest") return <ForestWhatHappensNext uploadHref={uploadHref} minutes={minutes} />;
 
   const steps: Step[] = [
     {
@@ -147,5 +152,46 @@ export function WhatHappensNextCard({ uploadHref }: WhatHappensNextCardProps) {
         {t("details.pauseAnytime")}
       </div>
     </motion.div>
+  );
+}
+
+const FOREST_STAGES = ["upload", "prepare", "talk", "feedback"] as const;
+
+/** Forest theme: the four journey stages as a numbered list, then the CTA. */
+function ForestWhatHappensNext({ uploadHref, minutes }: WhatHappensNextCardProps) {
+  const tf = useTranslations("forestJourney.next");
+  return (
+    <aside className="card jr-next" aria-labelledby="jr-next-title">
+      <h2 id="jr-next-title" className="jr-h2">
+        {tf("title")}
+      </h2>
+      <p className="jr-muted">{tf("subtitle")}</p>
+      <ol className="jr-numbered">
+        {FOREST_STAGES.map((stage, i) => (
+          <li key={stage} className={i === 0 ? "current" : undefined}>
+            <span className="jr-num" aria-hidden>
+              {i + 1}
+            </span>
+            <div>
+              <div className="jr-num-title">{tf(stage)}</div>
+              <p>
+                {stage !== "talk"
+                  ? tf(`${stage}Desc`)
+                  : minutes
+                    ? tf("talkDesc", { minutes })
+                    : tf("talkDescPlain")}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <Link href={uploadHref} className="btn btn-primary btn-lg jr-cta">
+        {tf("cta")}
+        <span className="icon-flip">
+          <ArrowIcon />
+        </span>
+      </Link>
+      <p className="jr-fine">{tf("pause")}</p>
+    </aside>
   );
 }

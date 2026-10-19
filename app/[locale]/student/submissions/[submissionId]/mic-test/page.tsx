@@ -19,6 +19,9 @@ export default async function MicTestPage({ params }: MicTestPageProps) {
       submissionId={submissionId}
       interviewId={lobby.interview.id}
       cameraMode={lobby.assignment.integrity?.camera ?? "on"}
+      questionCount={lobby.interview.questions.length}
+      estimatedMinutes={lobby.assignment.estimatedInterviewMinutes}
+      language={lobby.interview.id ? lobby.interview.language : undefined}
     />
   );
 }

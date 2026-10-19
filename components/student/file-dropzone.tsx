@@ -4,7 +4,15 @@ import { useCallback, useState, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { motion, AnimatePresence } from "framer-motion";
 import { Chip } from "@/components/podtask/chip";
-import { DocIcon, UploadIcon, XIcon } from "@/components/podtask/icons";
+import {
+  DocIcon,
+  FileTextIcon,
+  FileUpIcon,
+  ShieldIcon,
+  UploadIcon,
+  XIcon,
+} from "@/components/podtask/icons";
+import { useTheme } from "@/components/providers/theme-provider";
 import { cn, formatBytes } from "@/lib/utils";
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -36,6 +44,8 @@ export function FileDropzone({
   uploading,
 }: FileDropzoneProps) {
   const t = useTranslations();
+  const { theme } = useTheme();
+  const forest = theme === "forest";
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +69,17 @@ export function FileDropzone({
     },
     [onFile, t],
   );
+
+  if (selected && forest) {
+    return (
+      <ForestSelectedFile
+        selected={selected}
+        progress={progress}
+        uploading={uploading}
+        onReplace={() => onFile(null)}
+      />
+    );
+  }
 
   if (selected) {
     const done = progress >= 100;
@@ -149,8 +170,8 @@ export function FileDropzone({
         layout
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className={cn("dropzone", drag && "drag")}
-        style={{ marginTop: 32, cursor: "pointer" }}
+        className={cn("dropzone", drag && "drag", forest && "jr-dropzone")}
+        style={forest ? { cursor: "pointer" } : { marginTop: 32, cursor: "pointer" }}
         role="button"
         tabIndex={0}
         aria-label={`${t("upload.dropHere")}, ${t("upload.orClick")}`}
@@ -172,60 +193,74 @@ export function FileDropzone({
           handleFile(e.dataTransfer.files[0]);
         }}
       >
-        <div style={{ position: "relative", display: "inline-block" }}>
-          <div
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: "50%",
-              background:
-                "linear-gradient(135deg, rgba(125,211,252,0.3), rgba(253,164,175,0.3))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto",
-              boxShadow:
-                "0 10px 30px rgba(14,165,233,0.18), inset 0 2px 0 rgba(255,255,255,0.6)",
-            }}
-          >
+        {forest ? (
+          <>
+            <FileUpIcon size={40} className="jr-dz-icon" aria-hidden />
+            <div className="jr-dz-title">{t("forestJourney.upload.drop")}</div>
+            {/* Visual only: the whole zone is the control and opens the picker. */}
+            <span className="btn btn-primary jr-dz-btn" aria-hidden>
+              {t("forestJourney.upload.choose")}
+            </span>
+            <div className="jr-dz-hint">{t("forestJourney.upload.hint")}</div>
+          </>
+        ) : (
+          <>
+            <div style={{ position: "relative", display: "inline-block" }}>
+              <div
+                style={{
+                  width: 96,
+                  height: 96,
+                  borderRadius: "50%",
+                  background:
+                    "linear-gradient(135deg, rgba(125,211,252,0.3), rgba(253,164,175,0.3))",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto",
+                  boxShadow:
+                    "0 10px 30px rgba(14,165,233,0.18), inset 0 2px 0 rgba(255,255,255,0.6)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: "50%",
+                    background: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "rgb(var(--cyan))",
+                  }}
+                >
+                  <UploadIcon size={28} />
+                </div>
+              </div>
+            </div>
             <div
               style={{
-                width: 64,
-                height: 64,
-                borderRadius: "50%",
-                background: "white",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "rgb(var(--cyan))",
+                fontSize: 20,
+                fontWeight: 800,
+                marginTop: 20,
+                letterSpacing: "-0.01em",
               }}
             >
-              <UploadIcon size={28} />
+              {t("upload.dropHere")}
             </div>
-          </div>
-        </div>
-        <div
-          style={{
-            fontSize: 20,
-            fontWeight: 800,
-            marginTop: 20,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {t("upload.dropHere")}
-        </div>
-        <div className="text-muted" style={{ fontSize: 14, marginTop: 8 }}>
-          {t("upload.orClick")}
-        </div>
-        <div
-          className="row"
-          style={{ gap: 12, marginTop: 24, justifyContent: "center", flexWrap: "wrap" }}
-        >
-          <Chip>PDF</Chip>
-          <Chip>DOCX</Chip>
-          <Chip>TXT</Chip>
-          <Chip>{t("upload.maxSize")}</Chip>
-        </div>
+            <div className="text-muted" style={{ fontSize: 14, marginTop: 8 }}>
+              {t("upload.orClick")}
+            </div>
+            <div
+              className="row"
+              style={{ gap: 12, marginTop: 24, justifyContent: "center", flexWrap: "wrap" }}
+            >
+              <Chip>PDF</Chip>
+              <Chip>DOCX</Chip>
+              <Chip>TXT</Chip>
+              <Chip>{t("upload.maxSize")}</Chip>
+            </div>
+          </>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -242,8 +277,8 @@ export function FileDropzone({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="card"
-            style={{
+            className={forest ? "jr-dz-error" : "card"}
+            style={forest ? undefined : {
               marginTop: 20,
               padding: 18,
               background: "rgba(255,241,245,0.7)",
@@ -262,12 +297,73 @@ export function FileDropzone({
   );
 }
 
+/** Forest theme: the chosen file as one row with its upload state and a replace link. */
+function ForestSelectedFile({
+  selected,
+  progress,
+  uploading,
+  onReplace,
+}: {
+  selected: SelectedFile;
+  progress: number;
+  uploading: boolean;
+  onReplace: () => void;
+}) {
+  const t = useTranslations();
+  const done = progress >= 100;
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="jr-file"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="jr-file-icon" aria-hidden>
+        <FileTextIcon size={30} />
+      </span>
+      <div className="jr-file-meta">
+        <div className="jr-file-name">
+          <bdi>{selected.name}</bdi>
+        </div>
+        <div className="jr-file-sub">
+          {done ? (
+            <bdi>{formatBytes(selected.size)}</bdi>
+          ) : (
+            t("forestJourney.upload.uploading", { percent: progress })
+          )}
+        </div>
+      </div>
+      <UploadRing progress={progress} label={t("status.uploading")} forest />
+      <span className="jr-file-sep" aria-hidden />
+      <button
+        type="button"
+        className="jr-link"
+        disabled={uploading}
+        onClick={onReplace}
+      >
+        {t("forestJourney.upload.replace")}
+      </button>
+    </motion.div>
+  );
+}
+
 const RING_R = 13;
 const RING_C = 2 * Math.PI * RING_R;
 
 /** Progress ring that fills while uploading, then closes into a solid check seal. */
-function UploadRing({ progress, label }: { progress: number; label: string }) {
+function UploadRing({
+  progress,
+  label,
+  forest = false,
+}: {
+  progress: number;
+  label: string;
+  forest?: boolean;
+}) {
   const done = progress >= 100;
+  const tone = forest ? "rgb(var(--ok))" : "rgb(var(--ink))";
   return (
     <div
       role="progressbar"
@@ -297,7 +393,7 @@ function UploadRing({ progress, label }: { progress: number; label: string }) {
           cy={16}
           r={RING_R}
           fill="none"
-          stroke="rgb(var(--ink))"
+          stroke={tone}
           strokeWidth={2.5}
           strokeLinecap="round"
           strokeDasharray={RING_C}
@@ -315,11 +411,11 @@ function UploadRing({ progress, label }: { progress: number; label: string }) {
               position: "absolute",
               inset: 0,
               borderRadius: "50%",
-              background: "rgb(var(--ink))",
+              background: tone,
               color: "rgb(var(--white))",
               display: "grid",
               placeItems: "center",
-              boxShadow: "0 6px 16px rgba(16,24,40,0.22)",
+              boxShadow: forest ? "none" : "0 6px 16px rgba(16,24,40,0.22)",
             }}
           >
             <svg
@@ -344,5 +440,43 @@ function UploadRing({ progress, label }: { progress: number; label: string }) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * Forest theme: the "before you start" column next to the dropzone on the
+ * assignment upload and self-practice screens (three numbered tips and who
+ * gets to see the document).
+ */
+export function ForestUploadGuide({ variant }: { variant: "assignment" | "self" }) {
+  const tf = useTranslations("forestJourney.upload");
+  const tip = variant === "self" ? "selfTip" : "tip";
+  const privacy = variant === "self" ? "selfPrivacy" : "privacy";
+  return (
+    <aside className="jr-guide" aria-labelledby="jr-guide-title">
+      <h2 id="jr-guide-title" className="jr-guide-title">
+        {tf("beforeTitle")}
+      </h2>
+      <ol className="jr-numbered">
+        {[1, 2, 3].map((n) => (
+          <li key={n}>
+            <span className="jr-num" aria-hidden>
+              {n}
+            </span>
+            <div>
+              <div className="jr-num-title">{tf(`${tip}${n}Title`)}</div>
+              <p>{tf(`${tip}${n}Body`)}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="jr-privacy">
+        <ShieldIcon size={24} aria-hidden />
+        <div>
+          <div className="jr-privacy-title">{tf(`${privacy}Title`)}</div>
+          <p>{tf(`${privacy}Body`)}</p>
+        </div>
+      </div>
+    </aside>
   );
 }

@@ -7,8 +7,11 @@ import { Chip } from "@/components/podtask/chip";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { GlowOrb } from "@/components/podtask/glow-orb";
 import { Waveform } from "@/components/podtask/waveform";
+import { useTheme } from "@/components/providers/theme-provider";
 import {
   ArrowIcon,
+  FilePlusIcon,
+  HistoryIcon,
   MicIcon,
   SparkIcon,
   UploadIcon,
@@ -16,6 +19,33 @@ import {
 
 export function SelfInitiatedHero() {
   const t = useTranslations();
+  const { theme } = useTheme();
+
+  if (theme === "forest") {
+    // Quiet band: what self practice is, one primary action, one way back
+    // to past conversations. No orb, no motion.
+    return (
+      <section className="fh-band" aria-labelledby="fh-band-title">
+        <div className="fh-band-text">
+          <div className="eyebrow">{t("forestHome.self.eyebrow")}</div>
+          <h2 id="fh-band-title" className="fh-band-title">
+            {t("forestHome.self.title")}
+          </h2>
+          <p className="fh-band-body">{t("forestHome.self.body")}</p>
+        </div>
+        <div className="fh-band-actions">
+          <Link href="/student/self/new" className="btn btn-primary btn-lg fh-band-cta">
+            {t("forestHome.self.cta")}
+            <FilePlusIcon size={22} aria-hidden />
+          </Link>
+          <Link href="/student/history" className="fh-band-link">
+            {t("forestHome.self.past")}
+            <HistoryIcon size={22} aria-hidden />
+          </Link>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <motion.div

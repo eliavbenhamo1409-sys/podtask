@@ -1,0 +1,796 @@
+/* ==========================================================================
+   Forest theme: journey screens (assignment details, assignment upload,
+   self-practice upload, processing). Scoped under [data-theme="forest"];
+   tokens and shared primitives live in base.css. Every `.jr-*` class is
+   rendered by forest-only markup.
+   ========================================================================== */
+
+/* ---- Shared bits ---- */
+[data-theme="forest"] .jr-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  color: rgb(var(--cyan));
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+[data-theme="forest"] .jr-back:hover {
+  color: rgb(var(--accent-hover));
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+[data-theme="forest"] .jr-h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .jr-muted {
+  margin: 6px 0 0;
+  color: rgb(var(--muted));
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+[data-theme="forest"] .jr-body {
+  margin: 12px 0 0;
+  color: rgb(var(--ink-2));
+  font-size: 16px;
+  line-height: 1.75;
+}
+[data-theme="forest"] .jr-card {
+  padding: 28px 32px;
+}
+
+/* Page header: eyebrow, title, muted subtitle. */
+[data-theme="forest"] .jr-head .eyebrow,
+[data-theme="forest"] .jr-upload-head .eyebrow {
+  margin-bottom: 12px;
+}
+[data-theme="forest"] .jr-page .display {
+  margin: 0;
+}
+[data-theme="forest"] .jr-page .subtitle {
+  margin: 12px 0 0;
+}
+
+/* Numbered list (tips, stages, what comes next). */
+[data-theme="forest"] .jr-numbered {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+[data-theme="forest"] .jr-numbered > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+[data-theme="forest"] .jr-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 16px;
+  font-weight: 600;
+}
+[data-theme="forest"] .jr-num-title {
+  margin-top: 1px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .jr-numbered p {
+  margin: 4px 0 0;
+  color: rgb(var(--muted));
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+
+/* Stepper row: the journey stepper with the back link at the far end. */
+[data-theme="forest"] .jr-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 26px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-topline .jr-stepper {
+  flex: 0 1 780px;
+  min-width: 0;
+}
+[data-theme="forest"] .jr-topline .jr-back {
+  margin-inline-start: auto;
+}
+
+/* ==========================================================================
+   Assignment details
+   ========================================================================== */
+[data-theme="forest"] .jr-details > .jr-back {
+  margin-bottom: 24px;
+}
+[data-theme="forest"] .jr-details-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+  gap: 48px;
+  align-items: start;
+}
+[data-theme="forest"] .jr-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+[data-theme="forest"] .jr-head .display {
+  overflow-wrap: anywhere;
+}
+
+[data-theme="forest"] .jr-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 18px;
+  color: rgb(var(--ink-2));
+  font-size: 15px;
+}
+[data-theme="forest"] .jr-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+[data-theme="forest"] .jr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+[data-theme="forest"] .jr-status-ok {
+  color: rgb(var(--ok));
+}
+[data-theme="forest"] .jr-status-amber {
+  color: rgb(var(--amber-ink));
+}
+[data-theme="forest"] .jr-status-amber .jr-dot {
+  background: rgb(var(--amber));
+}
+[data-theme="forest"] .jr-status-muted {
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .jr-sep {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgb(var(--border-strong));
+}
+
+[data-theme="forest"] .jr-facts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+}
+[data-theme="forest"] .jr-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 22px 24px;
+  min-width: 0;
+}
+[data-theme="forest"] .jr-fact + .jr-fact {
+  border-inline-start: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-fact > svg {
+  flex: none;
+  margin-top: 1px;
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .jr-fact dt {
+  color: rgb(var(--muted));
+  font-size: 14px;
+  font-weight: 500;
+}
+[data-theme="forest"] .jr-fact dd {
+  margin: 4px 0 0;
+  color: rgb(var(--ink));
+  font-size: 17px;
+  font-weight: 700;
+}
+[data-theme="forest"] .jr-fact-sub {
+  display: block;
+  margin-top: 2px;
+  color: rgb(var(--muted));
+  font-size: 14px;
+  font-weight: 500;
+}
+
+[data-theme="forest"] .jr-card-sec + .jr-card-sec {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-rows {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+[data-theme="forest"] .jr-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 0;
+  border-top: 1px solid rgb(var(--line-2));
+  color: rgb(var(--ink));
+  font-size: 16px;
+  font-weight: 600;
+}
+[data-theme="forest"] .jr-row:last-child {
+  padding-bottom: 2px;
+}
+[data-theme="forest"] .jr-row > svg {
+  flex: none;
+  color: rgb(var(--ink-2));
+}
+
+[data-theme="forest"] .jr-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px 24px;
+  background: rgb(var(--bg-2));
+  border: 1px solid rgb(var(--line-2));
+  border-radius: var(--radius-card);
+}
+[data-theme="forest"] .jr-note > svg {
+  flex: none;
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .jr-note-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .jr-note p {
+  margin: 4px 0 0;
+  color: rgb(var(--ink-2));
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+[data-theme="forest"] .jr-next {
+  position: sticky;
+  top: 108px;
+  padding: 30px 32px;
+}
+[data-theme="forest"] .jr-next .jr-numbered {
+  margin-top: 26px;
+}
+[data-theme="forest"] .jr-next li.current .jr-num {
+  background: rgb(var(--cyan));
+  color: #fff;
+}
+[data-theme="forest"] .jr-cta {
+  width: 100%;
+  margin-top: 30px;
+  justify-content: center;
+}
+[data-theme="forest"] .jr-fine {
+  margin: 12px 0 0;
+  text-align: center;
+  color: rgb(var(--muted));
+  font-size: 14px;
+}
+
+/* ==========================================================================
+   Upload (assignment + self practice): reference 8.
+   The children of .jr-upload are, in DOM order: topline, header, the
+   dropzone wrapper, the guide column and the actions.
+   ========================================================================== */
+[data-theme="forest"] .jr-upload {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas:
+    "top  top"
+    "head guide"
+    "drop guide"
+    "drop actions";
+}
+[data-theme="forest"] .jr-upload > .jr-topline {
+  grid-area: top;
+}
+[data-theme="forest"] .jr-upload > .jr-upload-head {
+  grid-area: head;
+  padding-inline-end: 56px;
+}
+[data-theme="forest"] .jr-upload > .jr-drop {
+  grid-area: drop;
+  align-self: start;
+  padding-inline-end: 56px;
+}
+[data-theme="forest"] .jr-upload > .jr-guide {
+  grid-area: guide;
+  padding-inline-start: 44px;
+  border-inline-start: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-upload > .jr-actions {
+  grid-area: actions;
+  align-self: start;
+  padding-inline-start: 44px;
+  padding-top: 36px;
+}
+
+[data-theme="forest"] .jr-upload-head .display {
+  overflow-wrap: anywhere;
+}
+
+/* Dropzone (components/student/file-dropzone.tsx) */
+[data-theme="forest"] .jr-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 32px;
+  padding: 40px 24px 34px;
+  text-align: center;
+  border: 1.5px dashed rgb(var(--ink) / 0.26);
+  border-radius: var(--radius-card);
+  background: rgb(var(--accent-bg) / 0.42);
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+[data-theme="forest"] .jr-dropzone:hover,
+[data-theme="forest"] .jr-dropzone.drag {
+  border-color: rgb(var(--cyan));
+  background: rgb(var(--accent-bg) / 0.85);
+  box-shadow: none;
+}
+[data-theme="forest"] .jr-dz-icon {
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .jr-dz-title {
+  margin-top: 14px;
+  color: rgb(var(--ink));
+  font-size: 19px;
+  font-weight: 500;
+}
+[data-theme="forest"] .jr-dz-btn {
+  margin-top: 18px;
+  min-width: 230px;
+  justify-content: center;
+}
+[data-theme="forest"] .jr-dropzone:hover .jr-dz-btn {
+  background: rgb(var(--accent-hover));
+}
+[data-theme="forest"] .jr-dz-hint {
+  margin-top: 18px;
+  color: rgb(var(--muted));
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+[data-theme="forest"] .jr-dz-error {
+  margin-top: 16px;
+  padding: 14px 18px;
+  border: 1px solid rgb(var(--danger) / 0.22);
+  border-radius: var(--radius-md);
+  background: rgb(var(--danger-bg));
+  color: rgb(var(--pink-rose));
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The chosen file */
+[data-theme="forest"] .jr-file {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 32px;
+  padding: 18px 24px;
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--line));
+  border-radius: var(--radius-card);
+}
+[data-theme="forest"] .jr-file-icon {
+  display: flex;
+  flex: none;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .jr-file-meta {
+  flex: 1;
+  min-width: 0;
+}
+[data-theme="forest"] .jr-file-name {
+  color: rgb(var(--ink));
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+[data-theme="forest"] .jr-file-sub {
+  margin-top: 3px;
+  color: rgb(var(--muted));
+  font-size: 14.5px;
+}
+[data-theme="forest"] .jr-file-sep {
+  flex: none;
+  width: 1px;
+  height: 36px;
+  background: rgb(var(--line));
+}
+[data-theme="forest"] .jr-link {
+  flex: none;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--cyan));
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  cursor: pointer;
+}
+[data-theme="forest"] .jr-link:hover {
+  color: rgb(var(--accent-hover));
+}
+[data-theme="forest"] .jr-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* "Before you start" column */
+[data-theme="forest"] .jr-guide-title {
+  margin: 0 0 28px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .jr-guide .jr-numbered {
+  padding-bottom: 30px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 30px;
+  padding: 18px 20px;
+  background: rgb(var(--bg-2));
+  border: 1px solid rgb(var(--line-2));
+  border-radius: var(--radius-md);
+}
+[data-theme="forest"] .jr-privacy > svg {
+  flex: none;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .jr-privacy-title {
+  color: rgb(var(--ink));
+  font-size: 16px;
+  font-weight: 700;
+}
+[data-theme="forest"] .jr-privacy p {
+  margin: 4px 0 0;
+  color: rgb(var(--muted));
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+/* Footer actions: save and exit, then continue at the far end. */
+[data-theme="forest"] .jr-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+[data-theme="forest"] .jr-actions .btn-primary {
+  min-width: 240px;
+  justify-content: center;
+  padding-inline: 24px;
+}
+[data-theme="forest"] .jr-exit {
+  padding-inline: 4px;
+  font-size: 17px;
+}
+
+/* ==========================================================================
+   Processing
+   ========================================================================== */
+[data-theme="forest"] .jr-proc-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding-bottom: 30px;
+  margin-bottom: 36px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-proc-head .jr-stepper {
+  flex: 0 1 600px;
+  min-width: 0;
+}
+[data-theme="forest"] .jr-proc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  gap: 32px;
+  align-items: start;
+}
+[data-theme="forest"] .jr-proc-grid.solo {
+  grid-template-columns: minmax(0, 860px);
+}
+[data-theme="forest"] .jr-checklist {
+  margin-top: 20px;
+  padding: 6px 16px;
+  border: 1px solid rgb(var(--line));
+  border-radius: var(--radius-md);
+}
+[data-theme="forest"] .jr-proc-doc {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 4px;
+  border-bottom: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .jr-proc-doc > svg {
+  flex: none;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .jr-proc-doc-name {
+  color: rgb(var(--ink));
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+[data-theme="forest"] .jr-proc-doc-sub {
+  margin-top: 2px;
+  color: rgb(var(--muted));
+  font-size: 14px;
+}
+[data-theme="forest"] .jr-check-rows {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+}
+[data-theme="forest"] .jr-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 12px;
+  border-radius: var(--radius-sm);
+  color: rgb(var(--ink));
+  font-size: 16px;
+}
+[data-theme="forest"] .jr-check + .jr-check {
+  margin-top: 2px;
+}
+[data-theme="forest"] .jr-check-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+[data-theme="forest"] .jr-check-done .jr-check-mark {
+  background: rgb(var(--ok));
+  color: #fff;
+}
+[data-theme="forest"] .jr-check-active {
+  background: rgb(var(--accent-bg) / 0.65);
+  font-weight: 700;
+}
+[data-theme="forest"] .jr-check-active .jr-check-mark {
+  border: 2px solid rgb(var(--cyan) / 0.22);
+  border-top-color: rgb(var(--cyan));
+  animation: jr-spin 0.9s linear infinite;
+}
+[data-theme="forest"] .jr-check-pending {
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .jr-check-pending .jr-check-mark {
+  border: 1.5px solid rgb(var(--border-strong));
+}
+@keyframes jr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="forest"] .jr-check-active .jr-check-mark {
+    animation: none;
+  }
+}
+[data-theme="forest"] .jr-proc-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  color: rgb(var(--muted));
+  font-size: 15px;
+  line-height: 1.55;
+}
+[data-theme="forest"] .jr-proc-foot.ready {
+  color: rgb(var(--ok));
+  font-weight: 700;
+}
+[data-theme="forest"] .jr-proc-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 4px;
+  color: rgb(var(--pink-rose));
+  font-weight: 600;
+}
+[data-theme="forest"] .jr-proc-error > .btn {
+  margin-inline-start: auto;
+}
+[data-theme="forest"] .jr-proc-next .jr-numbered {
+  margin-top: 24px;
+}
+
+/* ==========================================================================
+   Narrow screens
+   ========================================================================== */
+@media (max-width: 1100px) {
+  [data-theme="forest"] .jr-upload {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  }
+  [data-theme="forest"] .jr-upload > .jr-upload-head,
+  [data-theme="forest"] .jr-upload > .jr-drop {
+    padding-inline-end: 36px;
+  }
+  [data-theme="forest"] .jr-upload > .jr-guide,
+  [data-theme="forest"] .jr-upload > .jr-actions {
+    padding-inline-start: 32px;
+  }
+  [data-theme="forest"] .jr-upload > .jr-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 6px;
+  }
+  [data-theme="forest"] .jr-actions .btn-primary {
+    width: 100%;
+    min-width: 0;
+  }
+  [data-theme="forest"] .jr-details-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    gap: 32px;
+  }
+  [data-theme="forest"] .jr-facts {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+  [data-theme="forest"] .jr-fact + .jr-fact {
+    border-inline-start: 0;
+    border-top: 1px solid rgb(var(--line));
+  }
+  [data-theme="forest"] .jr-proc-head {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 28px;
+  }
+  [data-theme="forest"] .jr-proc-head .jr-stepper {
+    flex: none;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-theme="forest"] .jr-upload {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "top"
+      "head"
+      "drop"
+      "actions"
+      "guide";
+  }
+  [data-theme="forest"] .jr-upload > .jr-upload-head,
+  [data-theme="forest"] .jr-upload > .jr-drop {
+    padding-inline-end: 0;
+  }
+  [data-theme="forest"] .jr-upload > .jr-guide {
+    margin-top: 40px;
+    padding-top: 32px;
+    padding-inline-start: 0;
+    border-inline-start: 0;
+    border-top: 1px solid rgb(var(--line));
+  }
+  [data-theme="forest"] .jr-upload > .jr-actions {
+    padding-inline-start: 0;
+    padding-top: 28px;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 6px;
+  }
+  [data-theme="forest"] .jr-actions .btn-primary {
+    width: 100%;
+    min-width: 0;
+  }
+  [data-theme="forest"] .jr-details-grid,
+  [data-theme="forest"] .jr-proc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-theme="forest"] .jr-next {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  [data-theme="forest"] .jr-topline {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 18px;
+    padding-bottom: 22px;
+    margin-bottom: 28px;
+  }
+  [data-theme="forest"] .jr-topline .jr-stepper {
+    flex: none;
+  }
+  [data-theme="forest"] .jr-topline .jr-back {
+    margin-inline-start: 0;
+    align-self: flex-start;
+  }
+  [data-theme="forest"] .jr-card,
+  [data-theme="forest"] .jr-next {
+    padding: 22px 20px;
+  }
+  [data-theme="forest"] .jr-dropzone {
+    margin-top: 24px;
+    padding: 30px 18px 26px;
+  }
+  [data-theme="forest"] .jr-dz-btn {
+    min-width: 0;
+    width: 100%;
+    max-width: 280px;
+  }
+  [data-theme="forest"] .jr-file {
+    flex-wrap: wrap;
+    gap: 12px 14px;
+    margin-top: 24px;
+    padding: 16px;
+  }
+  [data-theme="forest"] .jr-file-sep {
+    display: none;
+  }
+  [data-theme="forest"] .jr-guide-title {
+    font-size: 24px;
+    margin-bottom: 22px;
+  }
+  [data-theme="forest"] .jr-num {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+  }
+  [data-theme="forest"] .jr-num-title {
+    font-size: 17px;
+  }
+  [data-theme="forest"] .jr-proc-head {
+    padding-bottom: 24px;
+    margin-bottom: 24px;
+  }
+  [data-theme="forest"] .jr-checklist {
+    padding: 4px 10px;
+  }
+  [data-theme="forest"] .jr-proc-error > .btn {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+}

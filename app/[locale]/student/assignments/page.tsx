@@ -4,6 +4,7 @@ import { StudentAppShell } from "@/components/student/student-app-shell";
 import { AssignmentGrid } from "@/components/student/assignment-grid";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { getStudentAssignments } from "@/lib/student/student-service-server";
+import { getTheme } from "@/lib/theme/server";
 import { nextRouteForAssignment } from "@/lib/student/routing";
 import {
   findMockSubmission,
@@ -25,15 +26,25 @@ export default async function AssignmentsPage({ params }: AssignmentsPageProps) 
   setRequestLocale(locale);
   const t = await getTranslations();
   const assignments = await getStudentAssignments();
+  const theme = await getTheme();
 
   return (
     <StudentAppShell>
       <div className="page">
-        <Eyebrow showDot>{t("screens.dashboard")}</Eyebrow>
-        <h1 className="display">{t("dashboard.allAssignments")}</h1>
-        <p className="subtitle" style={{ maxWidth: 580 }}>
-          {t("dashboard.subtitle")}
-        </p>
+        {theme === "forest" ? (
+          <header className="fh-head">
+            <h1 className="display">{t("forestHome.assignments.title")}</h1>
+            <p className="subtitle">{t("forestHome.assignments.subtitle")}</p>
+          </header>
+        ) : (
+          <>
+            <Eyebrow showDot>{t("screens.dashboard")}</Eyebrow>
+            <h1 className="display">{t("dashboard.allAssignments")}</h1>
+            <p className="subtitle" style={{ maxWidth: 580 }}>
+              {t("dashboard.subtitle")}
+            </p>
+          </>
+        )}
 
         <AssignmentGrid
           style={{ marginTop: 24 }}

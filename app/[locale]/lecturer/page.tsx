@@ -9,6 +9,8 @@ import { NewAssignmentForm } from "@/components/lecturer/new-assignment-form";
 import { AddStudentsForm } from "@/components/lecturer/add-students-form";
 import { AssignmentStatusBadge } from "@/components/lecturer/assignment-status-badge";
 import { getLecturerDashboard } from "@/lib/lecturer/lecturer-service-server";
+import { getTheme } from "@/lib/theme/server";
+import { ForestDashboard } from "@/components/lecturer/forest/dashboard";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -26,6 +28,14 @@ export default async function LecturerDashboardPage({ params }: PageProps) {
   const t = await getTranslations();
   const dashboard = await getLecturerDashboard();
   if (!dashboard) return null;
+
+  if ((await getTheme()) === "forest") {
+    return (
+      <LecturerShell initial={dashboard.profile.avatarInitial}>
+        <ForestDashboard dashboard={dashboard} locale={locale} />
+      </LecturerShell>
+    );
+  }
 
   const stats = [
     { label: t("lecturer.statCourses"), value: dashboard.totals.courses },

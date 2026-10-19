@@ -4,9 +4,14 @@
  * Styling lives under "Interview room" in `styles/globals.css`; everything
  * here just maps props to data-attributes and CSS variables.
  */
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { GlowOrb, type OrbState } from "@/components/podtask/glow-orb";
-import { AlertIcon } from "@/components/podtask/icons";
+import {
+  AlertIcon,
+  CheckIcon,
+  ChevronIcon,
+  InfoIcon,
+} from "@/components/podtask/icons";
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -129,6 +134,7 @@ export function StudentTile({
   warning,
   debugLine,
   videoRef,
+  overlay,
 }: {
   eyebrow: ReactNode;
   chip: ReactNode;
@@ -150,6 +156,8 @@ export function StudentTile({
   /** Raw detector readings under the self-view (tuning only). */
   debugLine?: string;
   videoRef?: (el: HTMLVideoElement | null) => void;
+  /** Extra labels drawn on the self-view (forest theme only). */
+  overlay?: ReactNode;
 }) {
   const showWarning = cameraStatus === "on" && !!warning;
   const ring = muted
@@ -194,6 +202,7 @@ export function StudentTile({
             ) : (
               <span className="room-cam-dot" title={cameraLabel} aria-hidden />
             )}
+            {overlay}
             {showWarning ? (
               <div key={warning} className="room-cam-warn" role="status">
                 <AlertIcon size={14} aria-hidden />
@@ -308,8 +317,231 @@ export function TranscriptBubble({
   );
 }
 
+/* ---- Forest theme pieces ----
+   Only the forest room renders these. They are stateless: the camera
+   <video>, the audio element and every handler stay in the shared tree. */
+
+export type ForestTone = "on" | "busy" | "off" | "rec" | "warn";
+
+/** One host line from the live captions, as the forest room lists it. */
+export interface ForestLine {
+  id: string;
+  text: string;
+}
+
+// Big-text step by length, so a long host turn still fits its column.
+function textSize(text: string): "l" | "m" | "s" | "xs" {
+  const n = text.length;
+  if (n <= 90) return "l";
+  if (n <= 170) return "m";
+  if (n <= 280) return "s";
+  return "xs";
+}
+
+/**
+ * The question column: Aria's state, the question number, what she is
+ * saying now (or the question on the table) in large type, the student's
+ * mic line and, in live sessions, her earlier lines.
+ */
+export function ForestStage({
+  status,
+  statusTone,
+  extraChip,
+  questionLabel,
+  text,
+  textDir,
+  textMuted,
+  hint,
+  listenLabel,
+  listenTone,
+  bars,
+  transcript,
+  transcriptRef,
+}: {
+  status: string;
+  statusTone: ForestTone;
+  extraChip?: ReactNode;
+  questionLabel: string;
+  text: string;
+  textDir?: "rtl" | "ltr" | "auto";
+  /** Placeholder copy (nothing said yet) is drawn smaller and muted. */
+  textMuted?: boolean;
+  hint: string;
+  listenLabel: string;
+  listenTone: ForestTone;
+  bars: ReactNode;
+  /** Live sessions only: the collapsible list of earlier host lines. */
+  transcript?: {
+    title: string;
+    open: boolean;
+    onToggle: () => void;
+    lines: ForestLine[];
+    empty: string;
+    hostName: string;
+    hostInitial: string;
+    label: string;
+  };
+  /** The auto-scrolled list element (live captions). */
+  transcriptRef?: Ref<HTMLDivElement>;
+}) {
+  return (
+    <div className="fr-stage">
+      <div className="fr-stage-top">
+        <span className="fr-status" data-tone={statusTone}>
+          <span className="fr-dot" aria-hidden />
+          {status}
+        </span>
+        {extraChip}
+      </div>
+      <div className="fr-qnum">{questionLabel}</div>
+      <div className="fr-question-wrap">
+        <p
+          className="fr-question"
+          data-size={textSize(text)}
+          data-muted={textMuted ? "true" : undefined}
+          dir={textDir}
+        >
+          {text}
+        </p>
+      </div>
+      <p className="fr-hint">{hint}</p>
+      <div className="fr-listen" data-tone={listenTone}>
+        <span className="fr-listen-label">{listenLabel}</span>
+        {bars}
+      </div>
+      {transcript ? (
+        <div className="fr-transcript" data-open={transcript.open ? "true" : undefined}>
+          <button
+            type="button"
+            className="fr-transcript-toggle"
+            aria-expanded={transcript.open}
+            aria-controls="fr-transcript-list"
+            onClick={transcript.onToggle}
+          >
+            <span>{transcript.title}</span>
+            <ChevronIcon size={18} aria-hidden />
+          </button>
+          <div
+            id="fr-transcript-list"
+            ref={transcriptRef}
+            className="fr-transcript-scroll"
+            hidden={!transcript.open}
+            dir={textDir}
+            aria-label={transcript.label}
+          >
+            {transcript.lines.length === 0 ? (
+              <div className="fr-transcript-empty">{transcript.empty}</div>
+            ) : (
+              transcript.lines.map((line) => (
+                <div key={line.id} className="fr-line">
+                  <span className="fr-line-avatar" aria-hidden>
+                    {transcript.hostInitial}
+                  </span>
+                  <div className="fr-line-body">
+                    <div className="fr-line-name">{transcript.hostName}</div>
+                    <div className="fr-line-text">{line.text}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Numbered progress: a check for done questions, numbers only otherwise. */
+export function ForestProgress({
+  heading,
+  countLabel,
+  current,
+  total,
+  allDone,
+}: {
+  heading: string;
+  countLabel: string;
+  /** 1-based. */
+  current: number;
+  total: number;
+  allDone: boolean;
+}) {
+  const stateOf = (i: number) =>
+    allDone || i < current - 1 ? "done" : i === current - 1 ? "current" : "todo";
+  return (
+    <section className="fr-progress">
+      <div className="fr-progress-head">
+        <span className="fr-progress-title">{heading}</span>
+        <span className="fr-progress-count">{countLabel}</span>
+      </div>
+      <div
+        className="fr-steps"
+        role="progressbar"
+        aria-label={countLabel}
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-valuenow={current}
+      >
+        {Array.from({ length: total }, (_, i) => {
+          const state = stateOf(i);
+          return (
+            <span key={i} className="fr-step-wrap" aria-hidden>
+              {i > 0 ? (
+                <span
+                  className="fr-conn"
+                  data-done={stateOf(i - 1) === "done" ? "true" : undefined}
+                />
+              ) : null}
+              <span className="fr-step" data-state={state}>
+                {state === "done" ? <CheckIcon size={16} /> : i + 1}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** The exam-monitoring notice as a quiet row (forest side column). */
+export function ForestIntegrity({
+  title,
+  body,
+  count,
+  countWarn,
+  sync,
+  syncLabel,
+}: {
+  title: string;
+  body: string;
+  count?: string;
+  countWarn?: boolean;
+  sync: string;
+  syncLabel: string;
+}) {
+  return (
+    <section className="fr-integrity">
+      <InfoIcon size={22} aria-hidden className="fr-integrity-icon" />
+      <div className="fr-integrity-main">
+        <div className="fr-integrity-title">
+          <span>{title}</span>
+          <span className="fr-sync" data-sync={sync} aria-hidden />
+          <span className="sr-only">{syncLabel}</span>
+        </div>
+        <div className="fr-integrity-body">{body}</div>
+        {count ? (
+          <div className="fr-integrity-count" data-warn={countWarn ? "true" : undefined}>
+            {count}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 /** Spinner shown in the wrap-up overlay while the session closes. */
-export function Spinner() {
+export function Spinner({ forest }: { forest?: boolean } = {}) {
+  if (forest) return <span aria-hidden className="fr-spinner" />;
   return (
     <span
       aria-hidden

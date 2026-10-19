@@ -35,7 +35,10 @@ export default async function DashboardPage({ params }: DashboardPageProps) {
   return (
     <StudentAppShell studentInitial={dashboard.profile.avatarInitial}>
       <div className="page">
-        <WelcomeHeader studentName={firstName} />
+        <WelcomeHeader
+          studentName={firstName}
+          openCount={lecturerAssignments.filter((a) => a.status !== "completed").length}
+        />
 
         <SelfInitiatedHero />
 

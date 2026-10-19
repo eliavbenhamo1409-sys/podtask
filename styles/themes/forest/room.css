@@ -1,0 +1,1165 @@
+/* ==========================================================================
+   Forest theme: the live interview room.
+
+   The forest room (`.fr-room`, rendered only in this theme) keeps the same
+   stateful pieces as the classic room (camera <video>, audio, handlers) and
+   lays them out as two quiet columns: the question on the start side, the
+   self-view, progress and monitoring notice on the end side, a flat control
+   dock at the bottom. No orb, no glass, no glow.
+   Every rule is scoped under [data-theme="forest"] .fr-room.
+   ========================================================================== */
+
+[data-theme="forest"] .fr-room {
+  --fr-top-h: 84px;
+  --fr-dock-h: 92px;
+}
+
+/* ---- Shared status dot ---- */
+[data-theme="forest"] .fr-room .fr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: rgb(var(--muted) / 0.55);
+}
+[data-theme="forest"] .fr-room [data-tone="on"] > .fr-dot {
+  background: rgb(var(--ok));
+}
+[data-theme="forest"] .fr-room [data-tone="busy"] > .fr-dot,
+[data-theme="forest"] .fr-room [data-tone="off"] > .fr-dot {
+  background: rgb(var(--muted) / 0.55);
+}
+[data-theme="forest"] .fr-room [data-tone="rec"] > .fr-dot {
+  background: rgb(var(--danger));
+}
+[data-theme="forest"] .fr-room [data-tone="warn"] > .fr-dot {
+  background: rgb(var(--amber));
+}
+
+/* ---- Top bar ---- */
+[data-theme="forest"] .fr-room .fr-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  height: var(--fr-top-h);
+  padding: 0 40px;
+}
+[data-theme="forest"] .fr-room .fr-top-start {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+[data-theme="forest"] .fr-room .fr-top .wordmark {
+  font-size: 28px;
+}
+[data-theme="forest"] .fr-room .fr-top-area {
+  font-size: 17px;
+  font-weight: 500;
+  color: rgb(var(--ink));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-top-center {
+  min-width: 0;
+  max-width: min(46vw, 620px);
+  text-align: center;
+}
+[data-theme="forest"] .fr-room .fr-top-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: rgb(var(--ink));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-top-sub {
+  margin-top: 3px;
+  font-size: 14px;
+  color: rgb(var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-top-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  min-width: 0;
+}
+[data-theme="forest"] .fr-room .fr-top-time {
+  font-size: 18px;
+  font-weight: 500;
+  color: rgb(var(--ink));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+[data-theme="forest"] .fr-room .fr-top-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--danger));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-top-live > .fr-dot {
+  width: 9px;
+  height: 9px;
+  background: rgb(var(--danger));
+}
+
+/* ---- Two columns that fill the viewport between the bar and the dock ---- */
+[data-theme="forest"] .fr-room .room-main {
+  max-width: none;
+  margin: 0;
+  padding: 0 0 var(--fr-dock-h);
+}
+[data-theme="forest"] .fr-room .room-grid {
+  grid-template-columns: minmax(0, 1fr) clamp(380px, 34vw, 540px);
+  gap: 0;
+  height: max(540px, calc(100vh - var(--fr-top-h) - var(--fr-dock-h)));
+}
+[data-theme="forest"] .fr-room .room-side {
+  gap: 28px;
+  padding: 32px 36px 28px;
+  border-inline-start: 1px solid rgb(var(--line));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* ---- Question column ---- */
+[data-theme="forest"] .fr-room .fr-stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 32px 56px 0;
+}
+[data-theme="forest"] .fr-room .fr-stage-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+[data-theme="forest"] .fr-room .fr-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgb(var(--accent-bg) / 0.7);
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-status[data-tone="busy"],
+[data-theme="forest"] .fr-room .fr-status[data-tone="off"] {
+  background: rgb(var(--surface-2));
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-resumed {
+  background: transparent;
+  border: 1px solid rgb(var(--cyan-soft));
+  color: rgb(var(--cyan));
+  font-weight: 500;
+  white-space: normal;
+}
+[data-theme="forest"] .fr-room .fr-qnum {
+  margin-top: 44px;
+  font-size: 18px;
+  font-weight: 500;
+  color: rgb(var(--ink-2));
+}
+/* The big text keeps its newest line in view: an overlong host turn is
+   clipped at the top, never at the words being spoken. */
+[data-theme="forest"] .fr-room .fr-question-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: min(38vh, 330px);
+  overflow: hidden;
+  margin-top: 14px;
+  flex: none;
+}
+[data-theme="forest"] .fr-room .fr-question {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.32;
+  letter-spacing: -0.01em;
+  color: rgb(var(--ink));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+[data-theme="forest"] .fr-room .fr-question[data-size="m"] {
+  font-size: 30px;
+}
+[data-theme="forest"] .fr-room .fr-question[data-size="s"] {
+  font-size: 25px;
+  line-height: 1.4;
+}
+[data-theme="forest"] .fr-room .fr-question[data-size="xs"] {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+[data-theme="forest"] .fr-room .fr-question[data-muted="true"] {
+  font-size: 26px;
+  font-weight: 600;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fr-room .fr-hint {
+  margin: 16px 0 0;
+  font-size: 19px;
+  line-height: 1.5;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-listen {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 26px;
+  min-height: 28px;
+  font-size: 16px;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fr-room .fr-listen[data-tone="rec"] {
+  color: rgb(var(--danger));
+}
+
+/* Level bars: driven only by the live level, no idle dance. */
+[data-theme="forest"] .fr-room .vbars.fr-bars {
+  height: 24px;
+  gap: 3px;
+  justify-content: flex-start;
+}
+[data-theme="forest"] .fr-room .vbars.fr-bars > span {
+  width: 3px;
+  scale: 1 calc(0.16 + var(--lvl) * var(--k, 1) * 0.84);
+}
+[data-theme="forest"] .fr-room .vbars.fr-bars > span > i {
+  animation: none;
+  background: rgb(var(--border-strong));
+}
+[data-theme="forest"] .fr-room .fr-listen[data-tone="on"] .vbars.fr-bars > span > i {
+  background: rgb(var(--cyan));
+}
+[data-theme="forest"] .fr-room .fr-listen[data-tone="rec"] .vbars.fr-bars > span > i {
+  background: rgb(var(--danger));
+}
+
+/* Earlier host lines */
+[data-theme="forest"] .fr-room .fr-transcript {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 132px;
+  margin-top: 30px;
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fr-room .fr-transcript:not([data-open]) {
+  flex: none;
+  min-height: 0;
+}
+[data-theme="forest"] .fr-room .fr-transcript-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 20px 0 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  text-align: start;
+  cursor: pointer;
+}
+[data-theme="forest"] .fr-room .fr-transcript-toggle svg {
+  color: rgb(var(--ink-2));
+  transition: transform 0.2s ease;
+}
+[data-theme="forest"] .fr-room .fr-transcript[data-open] .fr-transcript-toggle svg {
+  transform: rotate(180deg);
+}
+[data-theme="forest"] .fr-room .fr-transcript-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  padding-bottom: 12px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+}
+[data-theme="forest"] .fr-room .fr-transcript-scroll[hidden] {
+  display: none;
+}
+[data-theme="forest"] .fr-room .fr-transcript-empty {
+  padding: 10px 0;
+  font-size: 15px;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fr-room .fr-line {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgb(var(--line-2));
+}
+[data-theme="forest"] .fr-room .fr-line:last-child {
+  border-bottom: 0;
+}
+[data-theme="forest"] .fr-room .fr-line-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 16px;
+  font-weight: 700;
+}
+[data-theme="forest"] .fr-room .fr-line-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fr-room .fr-line-text {
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: rgb(var(--ink-2));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Self-view (the shared StudentTile, restyled) ---- */
+[data-theme="forest"] .fr-room .room-student,
+[data-theme="forest"] .fr-room .room-student[data-active="true"] {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  align-items: stretch;
+  text-align: start;
+}
+[data-theme="forest"] .fr-room .room-tile-top {
+  display: none;
+}
+[data-theme="forest"] .fr-room .room-student-body {
+  flex: none;
+  padding: 0;
+  gap: 12px;
+  align-items: stretch;
+}
+[data-theme="forest"] .fr-room .room-student-body:has(.room-cam-wrap) > .room-student-name,
+[data-theme="forest"] .fr-room .room-student-body:has(.room-cam-wrap) > .room-student-status,
+[data-theme="forest"] .fr-room .room-student:has(.room-cam-wrap) > .room-student-bars {
+  display: none;
+}
+[data-theme="forest"] .fr-room .room-cam-wrap {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 7 / 5;
+  margin: 0;
+  border-radius: 10px;
+  background: rgb(var(--bg-2));
+  box-shadow: none;
+  border: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fr-room .room-cam-dot {
+  display: none;
+}
+[data-theme="forest"] .fr-room .room-cam-fallback.room-avatar {
+  width: 76px;
+  height: 76px;
+  margin: auto;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 28px;
+  font-weight: 700;
+  box-shadow: none;
+}
+[data-theme="forest"] .fr-room .fr-cam-pill,
+[data-theme="forest"] .fr-room .fr-cam-label {
+  position: absolute;
+  top: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(50% - 18px);
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgb(27 31 29 / 0.72);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme="forest"] .fr-room .fr-cam-pill {
+  inset-inline-start: 12px;
+}
+[data-theme="forest"] .fr-room .fr-cam-label {
+  inset-inline-end: 12px;
+}
+[data-theme="forest"] .fr-room .fr-cam-pill .fr-dot {
+  background: rgb(255 255 255 / 0.55);
+}
+[data-theme="forest"] .fr-room .fr-cam-pill[data-on="true"] .fr-dot {
+  background: #4cc38a;
+}
+/* Live warning sign: stays on the picture, amber and readable. */
+[data-theme="forest"] .fr-room .room-cam-wrap[data-warn="true"]::after {
+  box-shadow: inset 0 0 0 3px rgb(var(--amber));
+}
+[data-theme="forest"] .fr-room .room-cam-warn {
+  z-index: 3;
+  inset-inline: 12px;
+  bottom: 12px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgb(var(--amber-bg));
+  border: 1px solid rgb(var(--amber) / 0.55);
+  color: rgb(var(--amber-ink));
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: none;
+}
+[data-theme="forest"] .fr-room .room-cam-warn svg {
+  color: rgb(var(--amber));
+}
+[data-theme="forest"] .fr-room .room-cam-tracking {
+  margin: 0;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fr-room .room-cam-tracking-dot {
+  width: 8px;
+  height: 8px;
+  background: rgb(var(--muted) / 0.55);
+  box-shadow: none;
+}
+[data-theme="forest"] .fr-room .room-cam-tracking[data-tone="ok"] {
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .room-cam-tracking[data-tone="ok"] .room-cam-tracking-dot {
+  background: rgb(var(--ok));
+  box-shadow: none;
+}
+[data-theme="forest"] .fr-room .room-cam-tracking[data-tone="warn"] {
+  color: rgb(var(--amber-ink));
+}
+[data-theme="forest"] .fr-room .room-cam-tracking[data-tone="warn"] .room-cam-tracking-dot {
+  background: rgb(var(--amber));
+}
+/* Interviews without a camera: a plain card with the initial. */
+[data-theme="forest"] .fr-room .room-student:not(:has(.room-cam-wrap)) {
+  align-items: center;
+  text-align: center;
+  padding: 28px 20px 20px;
+  border: 1px solid rgb(var(--line));
+  border-radius: var(--radius-card);
+  background: rgb(var(--white));
+}
+[data-theme="forest"] .fr-room .room-student:not(:has(.room-cam-wrap)) .room-student-body {
+  align-items: center;
+  gap: 4px;
+}
+[data-theme="forest"] .fr-room .room-student > .room-student-body > .room-avatar {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 10px;
+  background: rgb(var(--accent-bg));
+  color: rgb(var(--cyan));
+  font-size: 26px;
+  font-weight: 700;
+  box-shadow: none;
+}
+[data-theme="forest"] .fr-room .room-avatar::before,
+[data-theme="forest"] .fr-room .room-avatar::after {
+  border-color: rgb(var(--cyan) / 0.45);
+}
+[data-theme="forest"] .fr-room .room-student-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+[data-theme="forest"] .fr-room .room-student-status {
+  font-size: 14px;
+}
+[data-theme="forest"] .fr-room .room-student-bars > span > i {
+  animation: none;
+  background: rgb(var(--cyan));
+}
+
+/* Camera problem notice */
+[data-theme="forest"] .fr-room .room-cam-notice {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgb(var(--amber-bg));
+  border: 1px solid rgb(var(--amber) / 0.4);
+}
+[data-theme="forest"] .fr-room .room-cam-notice > div:first-child {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: rgb(var(--amber-ink));
+}
+[data-theme="forest"] .fr-room .room-cam-notice .text-muted {
+  font-size: 14px !important;
+  line-height: 1.5;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .room-cam-notice .btn {
+  padding: 8px 14px !important;
+  font-size: 14px !important;
+}
+
+/* ---- Progress: numbers only ---- */
+[data-theme="forest"] .fr-room .fr-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+[data-theme="forest"] .fr-room .fr-progress-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fr-room .fr-progress-count {
+  font-size: 15px;
+  color: rgb(var(--ink-2));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-steps {
+  display: flex;
+  align-items: center;
+  margin-top: 18px;
+}
+[data-theme="forest"] .fr-room .fr-step-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+}
+[data-theme="forest"] .fr-room .fr-step-wrap:first-child {
+  flex: none;
+}
+[data-theme="forest"] .fr-room .fr-conn {
+  flex: 1 1 auto;
+  height: 2px;
+  margin: 0 6px;
+  border-radius: 2px;
+  background: rgb(var(--border-strong));
+}
+[data-theme="forest"] .fr-room .fr-conn[data-done="true"] {
+  background: rgb(var(--cyan));
+}
+[data-theme="forest"] .fr-room .fr-step {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(var(--border-strong));
+  background: rgb(var(--white));
+  color: rgb(var(--muted));
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="forest"] .fr-room .fr-step[data-state="done"] {
+  background: rgb(var(--cyan));
+  border-color: rgb(var(--cyan));
+  color: #fff;
+}
+[data-theme="forest"] .fr-room .fr-step[data-state="current"] {
+  background: rgb(var(--cyan));
+  border-color: rgb(var(--cyan));
+  color: #fff;
+  font-weight: 700;
+  outline: 3px solid rgb(var(--accent-bg));
+}
+
+/* ---- Monitoring notice ---- */
+[data-theme="forest"] .fr-room .fr-integrity {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 14px;
+  padding-top: 24px;
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fr-room .fr-integrity-icon {
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-integrity-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fr-room .fr-sync {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: rgb(var(--ok));
+}
+[data-theme="forest"] .fr-room .fr-sync[data-sync="pending"] {
+  background: rgb(var(--muted) / 0.55);
+}
+[data-theme="forest"] .fr-room .fr-sync[data-sync="retrying"],
+[data-theme="forest"] .fr-room .fr-sync[data-sync="offline"] {
+  background: rgb(var(--amber));
+}
+[data-theme="forest"] .fr-room .fr-integrity-body {
+  margin-top: 4px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: rgb(var(--muted));
+}
+[data-theme="forest"] .fr-room .fr-integrity-count {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-integrity-count[data-warn="true"] {
+  color: rgb(var(--amber-ink));
+}
+
+/* ---- Dock ---- */
+[data-theme="forest"] .fr-room .room-dock-wrap {
+  max-width: none;
+  padding: 0;
+}
+[data-theme="forest"] .fr-room .fr-dock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  height: var(--fr-dock-h);
+  padding: 0 40px;
+  background: rgb(250 250 247);
+  border-top: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fr-room .fr-dock-mic {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  justify-self: start;
+  padding-inline-end: 28px;
+  border-inline-end: 1px solid rgb(var(--line));
+}
+[data-theme="forest"] .fr-room .fr-dock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+[data-theme="forest"] .fr-room .fr-dock-end {
+  display: flex;
+  justify-content: flex-end;
+}
+[data-theme="forest"] .fr-room .fr-mic,
+[data-theme="forest"] .fr-room .mic-btn.fr-mic {
+  position: relative;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(var(--cyan));
+  color: #fff;
+  box-shadow: none;
+  cursor: pointer;
+  animation: none;
+  transition: background-color 0.15s ease;
+}
+[data-theme="forest"] .fr-room .fr-mic:hover {
+  background: rgb(var(--accent-hover));
+}
+[data-theme="forest"] .fr-room .mic-btn.fr-mic:hover:not(:disabled) {
+  transform: none;
+}
+[data-theme="forest"] .fr-room .fr-mic[data-muted="true"] {
+  background: rgb(var(--white));
+  color: rgb(var(--ink-2));
+  border: 1px solid rgb(var(--border-strong));
+}
+[data-theme="forest"] .fr-room .mic-btn.fr-mic.recording {
+  background: rgb(var(--danger));
+  animation: none;
+}
+[data-theme="forest"] .fr-room .mic-btn.fr-mic:disabled {
+  opacity: 0.45;
+}
+/* The live mic ring follows the student's voice (a level, not a pulse). */
+[data-theme="forest"] .fr-room .fr-mic::after,
+[data-theme="forest"] .fr-room .mic-btn.fr-mic::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 11px;
+  border: 2px solid rgb(var(--cyan) / 0.45);
+  opacity: calc(var(--lvl, 0) * 0.95);
+  animation: none;
+  pointer-events: none;
+  transition: opacity 0.1s ease-out;
+}
+[data-theme="forest"] .fr-room .fr-mic-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+[data-theme="forest"] .fr-room .fr-mic-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--ink-2));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-mic-label[data-tone="on"] {
+  color: rgb(var(--cyan));
+}
+[data-theme="forest"] .fr-room .fr-mic-label[data-tone="rec"] {
+  color: rgb(var(--danger));
+}
+[data-theme="forest"] .fr-room .fr-mic-hint {
+  font-size: 13px;
+  color: rgb(var(--muted));
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-dock-primary {
+  padding: 12px 20px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-dock-farewell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fr-room .fr-act {
+  height: 52px;
+  padding: 0 20px;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-act .fr-act-icon,
+[data-theme="forest"] .fr-room .fr-act svg {
+  flex: none;
+}
+[data-theme="forest"] .fr-room .fr-act-short {
+  display: none;
+}
+[data-theme="forest"] .fr-room .fr-end {
+  height: 52px;
+  padding: 0 22px;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgb(var(--danger));
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--danger) / 0.55);
+  white-space: nowrap;
+}
+[data-theme="forest"] .fr-room .fr-end:hover {
+  background: rgb(var(--danger-bg));
+  border-color: rgb(var(--danger));
+}
+
+/* Skip / swap confirmation, above the dock */
+[data-theme="forest"] .fr-room .fr-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: calc(100% - 32px);
+  max-width: 860px;
+  margin: 0 auto 12px;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--cyan-soft));
+}
+[data-theme="forest"] .fr-room .fr-banner[data-kind="skip"] {
+  background: rgb(var(--amber-bg));
+  border-color: rgb(var(--amber) / 0.5);
+}
+[data-theme="forest"] .fr-room .fr-banner .text-muted {
+  font-size: 14px !important;
+  line-height: 1.5;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-banner .btn {
+  padding: 10px 16px;
+  font-size: 14px;
+}
+[data-theme="forest"] .fr-room .fr-btn-danger {
+  color: #fff;
+  background: rgb(var(--danger));
+}
+[data-theme="forest"] .fr-room .fr-btn-danger:hover {
+  background: rgb(160 36 26);
+}
+
+/* "You left the exam screen" */
+[data-theme="forest"] .fr-room .room-return-notice {
+  top: calc(var(--fr-top-h) + 12px);
+  border-radius: 10px;
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--border-strong));
+  box-shadow: none;
+  color: rgb(var(--ink));
+}
+[data-theme="forest"] .fr-room .room-return-notice[data-repeat="true"] {
+  background: rgb(var(--amber-bg));
+  border-color: rgb(var(--amber) / 0.5);
+  box-shadow: none;
+}
+
+/* Connection error */
+[data-theme="forest"] .fr-room .fr-error {
+  position: fixed;
+  top: calc(var(--fr-top-h) + 12px);
+  inset-inline-end: 24px;
+  z-index: 20;
+  max-width: 340px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgb(var(--danger-bg));
+  border: 1px solid rgb(var(--danger) / 0.4);
+  color: rgb(var(--pink-rose));
+  font-size: 14px;
+  font-weight: 600;
+}
+[data-theme="forest"] .fr-room .fr-error-hint {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgb(var(--ink-2));
+}
+[data-theme="forest"] .fr-room .fr-error .btn {
+  margin-top: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Wrap-up overlay */
+[data-theme="forest"] .fr-room .fr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(27 31 29 / 0.32);
+}
+[data-theme="forest"] .fr-room .fr-overlay-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 28px 32px;
+}
+[data-theme="forest"] .fr-room .fr-spinner {
+  flex: none;
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgb(var(--accent-bg));
+  border-top-color: rgb(var(--cyan));
+  animation: spin 0.9s linear infinite;
+}
+
+/* The self-view gives up height first on short screens. */
+[data-theme="forest"] .fr-room .room-cam-wrap {
+  max-height: max(180px, calc(100vh - var(--fr-top-h) - var(--fr-dock-h) - 330px));
+}
+
+/* ---- Short desktops (laptops at 720-760px) ---- */
+@media (max-height: 760px) and (min-width: 901px) {
+  [data-theme="forest"] .fr-room .fr-stage {
+    padding-top: 24px;
+  }
+  [data-theme="forest"] .fr-room .fr-qnum {
+    margin-top: 28px;
+  }
+  [data-theme="forest"] .fr-room .fr-question-wrap {
+    max-height: 30vh;
+  }
+  [data-theme="forest"] .fr-room .fr-transcript {
+    margin-top: 20px;
+    min-height: 90px;
+  }
+  [data-theme="forest"] .fr-room .room-side {
+    gap: 20px;
+    padding-top: 24px;
+  }
+  [data-theme="forest"] .fr-room .fr-integrity {
+    padding-top: 18px;
+  }
+}
+
+/* ---- Narrower desktops ---- */
+@media (max-width: 1100px) {
+  [data-theme="forest"] .fr-room .fr-top-area,
+  [data-theme="forest"] .fr-room .fr-top-sep {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .fr-top,
+  [data-theme="forest"] .fr-room .fr-dock {
+    padding: 0 24px;
+  }
+  [data-theme="forest"] .fr-room .fr-stage {
+    padding: 28px 32px 0;
+  }
+  [data-theme="forest"] .fr-room .room-side {
+    padding: 28px 24px 24px;
+  }
+  [data-theme="forest"] .fr-room .fr-dock {
+    gap: 14px;
+  }
+  [data-theme="forest"] .fr-room .fr-dock-mic {
+    padding-inline-end: 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-mic-hint,
+  [data-theme="forest"] .fr-room .fr-dock-mic:has(.fr-dock-primary) .fr-mic-status {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .fr-act,
+  [data-theme="forest"] .fr-room .fr-end {
+    padding: 0 14px;
+  }
+}
+
+/* ---- Tablets and phones: one column, the dock in two rows ---- */
+@media (max-width: 900px) {
+  [data-theme="forest"] .fr-room {
+    --fr-top-h: 64px;
+  }
+  [data-theme="forest"] .fr-room .fr-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 0 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-top-center {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .fr-top .wordmark {
+    font-size: 23px;
+  }
+  [data-theme="forest"] .fr-room .fr-top-end {
+    gap: 12px;
+  }
+  [data-theme="forest"] .fr-room .fr-top-time {
+    font-size: 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-top-live {
+    font-size: 14px;
+  }
+  [data-theme="forest"] .fr-room .room-main {
+    padding: 0 0 172px;
+  }
+  /* The stage and side columns melt into one list so the self-view sits
+     right under the question and the earlier lines come last. */
+  [data-theme="forest"] .fr-room .room-grid {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    padding: 24px 16px 0;
+  }
+  [data-theme="forest"] .fr-room .fr-stage,
+  [data-theme="forest"] .fr-room .room-side {
+    display: contents;
+  }
+  [data-theme="forest"] .fr-room .room-side > * {
+    order: 1;
+    margin-top: 24px;
+  }
+  /* The earlier lines come last and simply grow with the page. */
+  [data-theme="forest"] .fr-room .fr-transcript {
+    order: 2;
+    flex: none;
+    min-height: 0;
+    margin-top: 28px;
+  }
+  [data-theme="forest"] .fr-room .fr-transcript-scroll {
+    flex: none;
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  [data-theme="forest"] .fr-room .fr-integrity {
+    margin-top: 28px;
+  }
+  [data-theme="forest"] .fr-room .fr-status {
+    font-size: 15px;
+    padding: 8px 14px;
+  }
+  [data-theme="forest"] .fr-room .fr-qnum {
+    margin-top: 28px;
+    font-size: 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-question-wrap {
+    max-height: none;
+    margin-top: 10px;
+  }
+  [data-theme="forest"] .fr-room .fr-question {
+    font-size: 26px;
+  }
+  [data-theme="forest"] .fr-room .fr-question[data-size="m"] {
+    font-size: 23px;
+  }
+  [data-theme="forest"] .fr-room .fr-question[data-size="s"] {
+    font-size: 20px;
+  }
+  [data-theme="forest"] .fr-room .fr-question[data-size="xs"] {
+    font-size: 18px;
+  }
+  [data-theme="forest"] .fr-room .fr-question[data-muted="true"] {
+    font-size: 20px;
+  }
+  [data-theme="forest"] .fr-room .fr-hint {
+    margin-top: 12px;
+    font-size: 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-listen {
+    margin-top: 18px;
+    gap: 12px;
+    font-size: 15px;
+  }
+  [data-theme="forest"] .fr-room .vbars.fr-bars > span:nth-child(n + 13) {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .room-cam-wrap {
+    aspect-ratio: 16 / 10;
+    max-height: none;
+  }
+  [data-theme="forest"] .fr-room .fr-cam-pill,
+  [data-theme="forest"] .fr-room .fr-cam-label {
+    top: 10px;
+    font-size: 13px;
+    padding: 5px 10px;
+  }
+  [data-theme="forest"] .fr-room .fr-cam-pill {
+    inset-inline-start: 10px;
+  }
+  [data-theme="forest"] .fr-room .fr-cam-label {
+    inset-inline-end: 10px;
+  }
+
+  [data-theme="forest"] .fr-room .fr-dock {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "mic end"
+      "acts acts";
+    height: auto;
+    gap: 10px 12px;
+    padding: 10px 16px 12px;
+  }
+  [data-theme="forest"] .fr-room .fr-dock-mic {
+    grid-area: mic;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    justify-self: stretch;
+  }
+  [data-theme="forest"] .fr-room .fr-dock-end {
+    grid-area: end;
+  }
+  [data-theme="forest"] .fr-room .fr-dock-actions {
+    grid-area: acts;
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 8px;
+  }
+  [data-theme="forest"] .fr-room .fr-mic,
+  [data-theme="forest"] .fr-room .mic-btn.fr-mic {
+    width: 48px;
+    height: 48px;
+  }
+  [data-theme="forest"] .fr-room .fr-mic-label {
+    font-size: 15px;
+  }
+  /* Mock driver: the "next" button needs the room the label had. */
+  [data-theme="forest"] .fr-room .fr-dock-mic:has(.fr-dock-primary) .fr-mic-status {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .fr-dock-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 48px;
+    padding: 0 14px;
+    font-size: 14px;
+    justify-content: center;
+  }
+  [data-theme="forest"] .fr-room .fr-act,
+  [data-theme="forest"] .fr-room .fr-end {
+    height: 44px;
+    padding: 0 10px;
+    gap: 8px;
+    font-size: 14px;
+    justify-content: center;
+  }
+  [data-theme="forest"] .fr-room .fr-end {
+    height: 48px;
+    padding: 0 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-act-long {
+    display: none;
+  }
+  [data-theme="forest"] .fr-room .fr-act-short {
+    display: inline;
+  }
+  [data-theme="forest"] .fr-room .fr-banner {
+    width: calc(100% - 24px);
+    margin-bottom: 8px;
+    padding: 14px 16px;
+  }
+  [data-theme="forest"] .fr-room .fr-error {
+    inset-inline: 16px;
+    max-width: none;
+  }
+}

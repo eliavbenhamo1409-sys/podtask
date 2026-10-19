@@ -1,4 +1,13 @@
 import "../../styles/globals.css";
+import "../../styles/themes/switcher.css";
+import "../../styles/themes/forest/base.css";
+import "../../styles/themes/forest/student-home.css";
+import "../../styles/themes/forest/journey.css";
+import "../../styles/themes/forest/prep.css";
+import "../../styles/themes/forest/room.css";
+import "../../styles/themes/forest/report.css";
+import "../../styles/themes/forest/lecturer.css";
+import "../../styles/themes/forest/auth.css";
 import type { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { setRequestLocale, getMessages } from "next-intl/server";
@@ -7,6 +16,9 @@ import { Heebo, Manrope } from "next/font/google";
 import { routing } from "@/lib/i18n/routing";
 import { localeMeta, type Locale } from "@/lib/i18n/config";
 import { MotionProvider } from "@/components/providers/motion-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { getTheme } from "@/lib/theme/server";
+import { THEME_COLOR } from "@/lib/theme/config";
 import type { Metadata, Viewport } from "next";
 
 const heebo = Heebo({
@@ -30,9 +42,9 @@ export const metadata: Metadata = {
   icons: { icon: "/icon-64.png", apple: "/icon-180.png" },
 };
 
-export const viewport: Viewport = {
-  themeColor: "#FAFCFF",
-};
+export async function generateViewport(): Promise<Viewport> {
+  return { themeColor: THEME_COLOR[await getTheme()] };
+}
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -56,11 +68,13 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
   const messages = await getMessages();
   const dir = localeMeta[locale as Locale].dir;
+  const theme = await getTheme();
 
   return (
     <html
       lang={locale}
       dir={dir}
+      data-theme={theme}
       className={`${heebo.variable} ${manrope.variable}`}
       suppressHydrationWarning
     >
@@ -81,7 +95,9 @@ export default async function LocaleLayout({
       </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <MotionProvider>{children}</MotionProvider>
+          <ThemeProvider initial={theme}>
+            <MotionProvider>{children}</MotionProvider>
+          </ThemeProvider>
         </NextIntlClientProvider>
       </body>
     </html>

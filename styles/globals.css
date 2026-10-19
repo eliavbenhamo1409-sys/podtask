@@ -1133,6 +1133,9 @@
     min-width: 24px;
     border-radius: 2px;
   }
+  .step-line.done {
+    background: linear-gradient(90deg, #7dd3fc, #fda4af);
+  }
 
   /* ---- Rubric bars (completion report) ---- */
   .meter {

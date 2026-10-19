@@ -4,10 +4,15 @@ import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { Badge, Chip } from "@/components/podtask/chip";
 import {
+  BulbIcon,
   ClockIcon,
   DocIcon,
+  FileTextIcon,
+  ListIcon,
+  MessageIcon,
   SparkIcon,
 } from "@/components/podtask/icons";
+import { useTheme } from "@/components/providers/theme-provider";
 import type { StudentAssignment } from "@/lib/student/types";
 
 interface AssignmentDetailsCardProps {
@@ -18,6 +23,8 @@ export function AssignmentDetailsCard({
   assignment,
 }: AssignmentDetailsCardProps) {
   const t = useTranslations();
+  const { theme } = useTheme();
+  if (theme === "forest") return <ForestAssignmentDetails assignment={assignment} />;
   const dueLabel = assignment.dueLabelKey
     ? t(`due.${assignment.dueLabelKey}`)
     : "";
@@ -146,5 +153,111 @@ export function AssignmentDetailsCard({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/**
+ * Forest theme: page header (course, title, lecturer, status) followed by
+ * a facts strip, the instructions + topics card and a conversation tip.
+ * Same data as the classic card; nothing here is assignment-specific copy
+ * that the data does not carry.
+ */
+function ForestAssignmentDetails({ assignment }: AssignmentDetailsCardProps) {
+  const t = useTranslations();
+  const tf = useTranslations("forestJourney.details");
+  const dueLabel = assignment.dueLabelKey ? t(`due.${assignment.dueLabelKey}`) : "";
+  const status =
+    assignment.badgeKind === "done"
+      ? { tone: "ok", label: tf("statusDone") }
+      : assignment.badgeKind === "next"
+        ? { tone: "amber", label: tf("statusNext") }
+        : { tone: "muted", label: tf("statusTodo") };
+  const hasInstructions = assignment.instructions.trim().length > 0;
+  const hasTopics = assignment.topics.length > 0;
+
+  return (
+    <div className="jr-detail">
+      <header className="jr-head">
+        <div className="eyebrow">{assignment.courseName}</div>
+        <h1 className="display">{assignment.title}</h1>
+        <p className="subtitle">{assignment.lecturerName}</p>
+        <div className="jr-status-line">
+          <span className={`jr-status jr-status-${status.tone}`}>
+            <span className="jr-dot" aria-hidden />
+            {status.label}
+          </span>
+          {dueLabel && (
+            <>
+              <span className="jr-sep" aria-hidden />
+              <span>{tf("due", { date: dueLabel })}</span>
+            </>
+          )}
+        </div>
+      </header>
+
+      <dl className="card jr-facts">
+        <div className="jr-fact">
+          <ClockIcon size={22} aria-hidden />
+          <div>
+            <dt>{tf("factLength")}</dt>
+            <dd>{tf("factLengthValue", { minutes: assignment.estimatedInterviewMinutes })}</dd>
+          </div>
+        </div>
+        <div className="jr-fact">
+          <FileTextIcon size={22} aria-hidden />
+          <div>
+            <dt>{tf("factUpload")}</dt>
+            <dd>
+              {tf("factUploadValue")}
+              <span className="jr-fact-sub">{tf("factFormats")}</span>
+            </dd>
+          </div>
+        </div>
+        {hasTopics && (
+          <div className="jr-fact">
+            <ListIcon size={22} aria-hidden />
+            <div>
+              <dt>{tf("factTopics")}</dt>
+              <dd>{tf("factTopicsValue", { count: assignment.topics.length })}</dd>
+            </div>
+          </div>
+        )}
+      </dl>
+
+      {(hasInstructions || hasTopics) && (
+        <section className="card jr-card">
+          {hasInstructions && (
+            <div className="jr-card-sec">
+              <h2 className="jr-h2">{tf("instructions")}</h2>
+              <p className="jr-body" dir="auto">
+                {assignment.instructions}
+              </p>
+            </div>
+          )}
+          {hasTopics && (
+            <div className="jr-card-sec">
+              <h2 className="jr-h2">{tf("topicsTitle")}</h2>
+              <p className="jr-muted">{tf("topicsHint")}</p>
+              <ul className="jr-rows">
+                {assignment.topics.map((topic) => (
+                  <li key={topic} className="jr-row">
+                    <MessageIcon size={20} aria-hidden />
+                    <span>{topic}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      <aside className="jr-note">
+        <BulbIcon size={22} aria-hidden />
+        <div>
+          <div className="jr-note-title">{tf("tipTitle")}</div>
+          <p>{tf("tipBody")}</p>
+        </div>
+      </aside>
+    </div>
   );
 }

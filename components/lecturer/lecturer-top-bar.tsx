@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Link, usePathname, useRouter } from "@/lib/i18n/navigation";
 import { BrandMark } from "@/components/podtask/brand-mark";
+import { ThemeSwitcher } from "@/components/podtask/theme-switcher";
 import { GlobeIcon, HomeIcon } from "@/components/podtask/icons";
 import { createClient } from "@/lib/supabase/client";
 import { clearCachedProfileInitial } from "@/lib/student/profile-initial";
@@ -59,6 +60,7 @@ export function LecturerTopBar({ initial }: { initial?: string }) {
           <GlobeIcon size={14} />
           {locale === "he" ? "EN" : "עב"}
         </button>
+        <ThemeSwitcher className="nav-pill" showLabel={false} />
         <button
           type="button"
           className="nav-pill"

@@ -60,12 +60,19 @@ export default async function InterviewPage({ params }: InterviewPageProps) {
   }
 
   const firstName = profile.fullName.split(/[\s/]+/)[0] ?? "";
+  // Forest top bar: "course · student". Mock names are "he / en"; a profile
+  // without a name falls back to the email, which is not shown there.
+  const displayName = profile.fullName.split("/")[0]?.trim();
 
   return (
     <InterviewRoomClient
       interviewId={interviewId}
       submissionId={submissionId}
       assignmentTitle={data.assignment.title}
+      courseName={data.assignment.courseName}
+      studentFullName={
+        displayName && !displayName.includes("@") ? displayName : undefined
+      }
       questions={started.questions.length > 0 ? started.questions : data.interview.questions}
       locale={locale}
       interviewLanguage={data.interview.language}

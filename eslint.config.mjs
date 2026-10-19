@@ -5,6 +5,8 @@ const eslintConfig = [
   {
     ignores: [
       "podtask 2/**",
+      // Agent worktrees (each a full checkout with its own .next build).
+      ".claude/**",
       ".next/**",
       "node_modules/**",
       "supabase/functions/**", "tests/**", "bench/**", "load/**",

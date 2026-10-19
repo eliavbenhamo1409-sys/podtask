@@ -1,0 +1,96 @@
+/* Theme picker (top bars, profile). Theme-agnostic: colours come from the
+   active theme's tokens, so it fits both the classic and the forest bar. */
+
+.theme-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 60;
+  min-width: 196px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgb(var(--white));
+  border: 1px solid rgb(var(--line));
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+.theme-switcher[data-placement="up"] .theme-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  text-align: start;
+}
+.theme-menu-item:hover {
+  background: rgb(var(--bg-2));
+}
+.theme-menu-item.selected {
+  color: rgb(var(--cyan));
+}
+
+.theme-swatch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1px solid rgba(16, 24, 40, 0.16);
+  overflow: hidden;
+}
+/* Split chip: page colour on one half, accent on the other. A square chip
+   (not a circle) so it never reads as a radio button. */
+.theme-swatch > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 0;
+  width: 50%;
+}
+.theme-menu-name {
+  flex: 1;
+}
+
+/* Theme cards on the profile page. */
+.theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.theme-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgb(var(--line));
+  border-radius: var(--radius-sm);
+  background: rgb(var(--white));
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  text-align: start;
+}
+.theme-card[aria-checked="true"] {
+  border-color: rgb(var(--cyan));
+  box-shadow: 0 0 0 1px rgb(var(--cyan));
+}

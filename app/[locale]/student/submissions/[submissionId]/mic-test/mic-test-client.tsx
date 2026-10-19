@@ -35,12 +35,33 @@ import { listVideoInputs, videoConstraints } from "@/lib/integrity/camera-monito
 import { PREFERRED_CAMERA_KEY } from "@/lib/integrity/preferences";
 import { CAMERA_EXEMPTION_REASONS, type CameraExemptionReason } from "@/lib/integrity/types";
 import { recordCameraExemption } from "@/lib/student/student-service";
+import { useTheme } from "@/components/providers/theme-provider";
+import { cn } from "@/lib/utils";
+import {
+  ForestCamPlaceholder,
+  ForestCamStatus,
+  ForestCamWaiting,
+  ForestCardHead,
+  ForestMicActions,
+  ForestMicDenied,
+  ForestMicDevice,
+  ForestMicFooter,
+  ForestMicHeader,
+  ForestMicLevel,
+  ForestMicPermission,
+  ForestReadyCard,
+} from "./forest-mic-parts";
+import type { InterviewLanguage } from "@/lib/student/interview-language";
 
 interface MicTestClientProps {
   submissionId: string;
   interviewId: string;
   /** off = no camera in this interview; on = asked; required = must be granted to start. */
   cameraMode?: CameraMode;
+  /** Interview facts for the forest summary card (not used by the classic layout). */
+  questionCount?: number;
+  estimatedMinutes?: number;
+  language?: InterviewLanguage;
 }
 
 type RecorderPhase = "idle" | "recording" | "recorded";
@@ -71,9 +92,16 @@ export function MicTestClient({
   submissionId,
   interviewId,
   cameraMode = "on",
+  questionCount = 0,
+  estimatedMinutes = 0,
+  language,
 }: MicTestClientProps) {
   const t = useTranslations();
   const router = useRouter();
+  // Forest is a skin: the same elements (video, audio, recorder) stay mounted
+  // in the same places; only classes and presentational siblings change.
+  const forest = useTheme().theme === "forest";
+  const [micLabel, setMicLabel] = useState<string | null>(null);
   const [perm, setPerm] = useState<MicPermissionState>("permission_required");
   const [cam, setCam] = useState<CameraCheck>("idle");
   const [camSignal, setCamSignal] = useState<CameraSignal>("unknown");
@@ -275,6 +303,7 @@ export function MicTestClient({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setMicLabel(stream.getAudioTracks()[0]?.label || null);
       setUnsupported(typeof MediaRecorder === "undefined");
       setPerm("permission_granted");
     } catch {
@@ -385,32 +414,64 @@ export function MicTestClient({
   const recorded = phase === "recorded";
   const cameraGate = cameraMode !== "required" || cam === "on" || exemptionState === "done";
   const canStart = (recorded || unsupported) && cameraGate;
+  // What still stands between the student and the room (forest footer).
+  const need: "mic" | "recording" | "camera" | null =
+    perm !== "permission_granted"
+      ? "mic"
+      : !(recorded || unsupported)
+        ? "recording"
+        : !cameraGate
+          ? "camera"
+          : null;
+  const lobbyHref = `/student/submissions/${submissionId}/lobby`;
 
   return (
     <StudentAppShell>
-      <div className="page-narrow">
-        <Link href={`/student/submissions/${submissionId}/lobby`} className="btn btn-ghost row" style={{ padding: "8px 0", gap: 8 }}>
+      <div
+        className={
+          forest ? cn("page fp-page fp-mic", cameraMode === "off" && "fp-mic-solo") : "page-narrow"
+        }
+      >
+        {forest ? null : (
+          <Link href={lobbyHref} className="btn btn-ghost row" style={{ padding: "8px 0", gap: 8 }}>
             <span className="icon-flip">
               <BackIcon />
             </span>
             {t("micTest.back")}
           </Link>
+        )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          style={{ marginTop: 24 }}
+        {forest ? (
+          <ForestMicHeader withCamera={cameraMode !== "off"} />
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            style={{ marginTop: 24 }}
+          >
+            <Eyebrow showDot>{t("micTest.eyebrow")}</Eyebrow>
+            <h1 className="display" style={{ fontSize: 38 }}>
+              {t("micTest.title")}
+            </h1>
+            <p className="subtitle">{t("micTest.subtitle")}</p>
+          </motion.div>
+        )}
+
+        <div
+          className={forest ? "card fp-card fp-mic-card" : "card-hero"}
+          style={forest ? undefined : { padding: 48, marginTop: 32 }}
         >
-          <Eyebrow showDot>{t("micTest.eyebrow")}</Eyebrow>
-          <h1 className="display" style={{ fontSize: 38 }}>
-            {t("micTest.title")}
-          </h1>
-          <p className="subtitle">{t("micTest.subtitle")}</p>
-        </motion.div>
-
-        <div className="card-hero" style={{ padding: 48, marginTop: 32 }}>
-          {perm === "permission_required" && (
+          {forest ? (
+            <ForestCardHead
+              title={t("forestPrep.micCardTitle")}
+              body={t("forestPrep.micCardBody")}
+            />
+          ) : null}
+          {perm === "permission_required" && forest && (
+            <ForestMicPermission onNotNow={() => setPerm("permission_denied")} onAllow={requestMic} />
+          )}
+          {perm === "permission_required" && !forest && (
             <div style={{ textAlign: "center" }}>
               <div
                 style={{
@@ -499,7 +560,8 @@ export function MicTestClient({
             </div>
           )}
 
-          {perm === "permission_denied" && (
+          {perm === "permission_denied" && forest && <ForestMicDenied onRetry={requestMic} />}
+          {perm === "permission_denied" && !forest && (
             <div
               className="card"
               style={{
@@ -528,7 +590,10 @@ export function MicTestClient({
           )}
 
           {perm === "permission_granted" && (
-            <div>
+            <div className={forest ? "fp-mic-body" : undefined}>
+              {forest ? (
+                <ForestMicDevice label={micLabel} />
+              ) : (
               <div className="between">
                 <Badge variant="mint" showDot>
                   {t("micTest.micConnected")}
@@ -540,7 +605,19 @@ export function MicTestClient({
                   {t("micTest.defaultMic")}
                 </div>
               </div>
+              )}
 
+              {forest ? (
+                <ForestMicLevel
+                  recording={recording}
+                  recorded={recorded}
+                  silent={silent}
+                  unsupported={unsupported}
+                  level={level}
+                  seconds={seconds}
+                  maxSeconds={MAX_RECORD_MS / 1000}
+                />
+              ) : (
               <div
                 style={{
                   marginTop: 24,
@@ -642,7 +719,18 @@ export function MicTestClient({
                   </div>
                 )}
               </div>
+              )}
 
+              {forest ? (
+                <ForestMicActions
+                  recording={recording}
+                  recorded={recorded}
+                  playing={playing}
+                  unsupported={unsupported}
+                  onToggleRecording={toggleRecording}
+                  onTogglePlayback={togglePlayback}
+                />
+              ) : (
               <div
                 className="row"
                 style={{ gap: 16, marginTop: 32, justifyContent: "center" }}
@@ -685,6 +773,7 @@ export function MicTestClient({
                   </button>
                 )}
               </div>
+              )}
 
               <audio
                 ref={audioElRef}
@@ -698,7 +787,16 @@ export function MicTestClient({
         </div>
 
         {cameraMode !== "off" && perm === "permission_granted" ? (
-          <div className="card" style={{ padding: 28, marginTop: 24 }}>
+          <div
+            className={forest ? "card fp-card fp-cam-card" : "card"}
+            style={forest ? undefined : { padding: 28, marginTop: 24 }}
+          >
+            {forest ? (
+              <ForestCardHead
+                title={t("forestPrep.camCardTitle")}
+                body={t("forestPrep.camCardBody")}
+              />
+            ) : (
             <div className="between" style={{ gap: 12, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 17 }}>
@@ -723,9 +821,16 @@ export function MicTestClient({
                       : t("micTest.cameraTitle")}
               </Badge>
             </div>
+            )}
+            {/* Forest flattens this row (display: contents) so the preview,
+                status, picker and help line can be ordered inside the card. */}
             <div
-              className="row"
-              style={{ gap: 20, marginTop: 20, alignItems: "center", flexWrap: "wrap" }}
+              className={forest ? "fp-cam-stage" : "row"}
+              style={
+                forest
+                  ? undefined
+                  : { gap: 20, marginTop: 20, alignItems: "center", flexWrap: "wrap" }
+              }
             >
               <video
                 ref={camVideoRef}
@@ -735,7 +840,7 @@ export function MicTestClient({
                 playsInline
                 style={{ display: cam === "on" ? "block" : "none" }}
               />
-              {cam !== "on" ? (
+              {cam !== "on" && !forest ? (
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -747,7 +852,10 @@ export function MicTestClient({
                     : t("micTest.cameraAllow")}
                 </button>
               ) : null}
-              <div className="text-muted" style={{ fontSize: 13, flex: "1 1 220px", lineHeight: 1.5 }}>
+              <div
+                className={forest ? "fp-cam-help" : "text-muted"}
+                style={forest ? undefined : { fontSize: 13, flex: "1 1 220px", lineHeight: 1.5 }}
+              >
                 {cam === "denied"
                   ? t("micTest.cameraDeniedBody")
                   : cam === "on" && camSignal === "none"
@@ -758,10 +866,35 @@ export function MicTestClient({
                         ? t("micTest.cameraRequired")
                         : t("micTest.cameraOptional")}
               </div>
+              {forest && cam !== "on" ? (
+                <ForestCamPlaceholder>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void requestCamera()}
+                    disabled={cam === "starting"}
+                  >
+                    {cam === "denied" || cam === "unavailable"
+                      ? t("micTest.cameraTryAgain")
+                      : t("micTest.cameraAllow")}
+                  </button>
+                </ForestCamPlaceholder>
+              ) : null}
+              {forest ? <ForestCamStatus cam={cam} signal={camSignal} /> : null}
             </div>
             {cam === "on" && camDevices.length > 1 ? (
-              <div className="row" style={{ gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
-                <label htmlFor="mic-cam-select" style={{ fontSize: 13, fontWeight: 700 }}>
+              <div
+                className={forest ? "fp-cam-pick" : "row"}
+                style={
+                  forest
+                    ? undefined
+                    : { gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }
+                }
+              >
+                <label
+                  htmlFor="mic-cam-select"
+                  style={forest ? undefined : { fontSize: 13, fontWeight: 700 }}
+                >
                   {t("micTest.cameraPick")}
                 </label>
                 <select
@@ -778,7 +911,10 @@ export function MicTestClient({
                 </select>
               </div>
             ) : null}
-            <p className="text-muted" style={{ fontSize: 12, lineHeight: 1.55, margin: "14px 0 0" }}>
+            <p
+              className={forest ? "fp-cam-privacy" : "text-muted"}
+              style={forest ? undefined : { fontSize: 12, lineHeight: 1.55, margin: "14px 0 0" }}
+            >
               {t("micTest.cameraPrivacy")}
             </p>
             {cameraMode === "required" && cam !== "on" ? (
@@ -856,12 +992,49 @@ export function MicTestClient({
             ) : null}
           </div>
         ) : null}
+        {forest && cameraMode !== "off" && perm !== "permission_granted" ? <ForestCamWaiting /> : null}
+        {forest ? (
+          <ForestReadyCard
+            mic={perm === "permission_granted" ? "done" : "pending"}
+            test={recorded ? (silent ? "warn" : "done") : "pending"}
+            camera={
+              cameraMode === "off"
+                ? null
+                : {
+                    state:
+                      exemptionState === "done"
+                        ? "done"
+                        : cam === "on"
+                          ? camSignal === "none"
+                            ? "warn"
+                            : "done"
+                          : cam === "denied" || cam === "unavailable"
+                            ? "warn"
+                            : "pending",
+                    optional: cameraMode !== "required",
+                    exemptLabel:
+                      exemptionState === "done" && cam !== "on" ? t("micTest.exemptionDone") : null,
+                  }
+            }
+            questionCount={questionCount}
+            minutes={estimatedMinutes}
+            language={language ?? null}
+          />
+        ) : null}
 
+        {forest ? (
+          <ForestMicFooter
+            backHref={lobbyHref}
+            canStart={canStart}
+            need={need}
+            onStart={startInterview}
+          />
+        ) : (
         <div
           className="row"
           style={{ gap: 12, marginTop: 32, justifyContent: "flex-end" }}
         >
-          <Link href={`/student/submissions/${submissionId}/lobby`} className="btn btn-secondary btn-lg">
+          <Link href={lobbyHref} className="btn btn-secondary btn-lg">
               {t("common.cancel")}
             </Link>
           <button
@@ -876,6 +1049,7 @@ export function MicTestClient({
             </span>
           </button>
         </div>
+        )}
       </div>
     </StudentAppShell>
   );

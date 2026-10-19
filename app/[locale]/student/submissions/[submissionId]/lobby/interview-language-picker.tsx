@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Chip } from "@/components/podtask/chip";
 import { setInterviewLanguage } from "@/lib/student/student-service";
+import { useTheme } from "@/components/providers/theme-provider";
 import {
   INTERVIEW_LANGUAGES,
   type InterviewLanguage,
@@ -34,6 +35,7 @@ export function InterviewLanguagePicker({
   initial,
 }: InterviewLanguagePickerProps) {
   const t = useTranslations();
+  const { theme } = useTheme();
   const [selected, setSelected] = useState<InterviewLanguage>(initial);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -56,6 +58,38 @@ export function InterviewLanguagePicker({
     } finally {
       setSaving(false);
     }
+  }
+
+  if (theme === "forest") {
+    // Same control, drawn as a segmented switch.
+    return (
+      <div className="fp-lang">
+        <div className="fp-section-title" id="fp-lang-title">
+          {t("forestPrep.languageTitle")}
+        </div>
+        <div
+          className="fp-seg"
+          role="group"
+          aria-labelledby="fp-lang-title"
+          aria-busy={saving || undefined}
+        >
+          {INTERVIEW_LANGUAGES.map((language) => (
+            <button
+              key={language}
+              type="button"
+              className={language === selected ? "fp-seg-btn is-on" : "fp-seg-btn"}
+              aria-pressed={language === selected}
+              onClick={() => void choose(language)}
+            >
+              <span dir="auto">{LABELS[language]}</span>
+            </button>
+          ))}
+        </div>
+        <p className={failed ? "fp-hint is-error" : "fp-hint"} role={failed ? "alert" : undefined}>
+          {failed ? t("lobby.languageSaveFailed") : t("forestPrep.languageHint")}
+        </p>
+      </div>
+    );
   }
 
   return (
