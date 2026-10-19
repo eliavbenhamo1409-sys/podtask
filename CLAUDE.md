@@ -25,7 +25,8 @@ interview room, data layer, known issues). Edge functions: `supabase/functions/R
 - Supabase: Postgres (17 tables: profiles, institutions, courses, assignments,
   submissions, document_parses/chunks/analyses, interviews, interview_plans,
   interview_messages, answer_evaluations, reports, …), RLS, Storage, Auth
-  (email+password, magic link, guest via `create-guest-session`).
+  (admin-created username+password accounts, student / lecturer login tabs,
+  guest via `create-guest-session`; `ARCHITECTURE.md` §8 "Accounts and sign-in").
 - Supabase Edge Functions (Deno) in `supabase/functions/`:
   `prepare-submission` (parse → analyze → question pool + seeded plan → interview row),
   `interview-control` (consent / start-resume / telemetry / host flags, service role),

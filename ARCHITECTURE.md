@@ -310,12 +310,51 @@ Built on the telemetry above; nothing here changes the knowledge score.
 
 `/[locale]/lecturer` (layout = role gate on `profiles.role`), dashboard
 (courses, assignments, counts, create course / assignment, enrol students by
-e-mail through `lecturer_create_course` / `lecturer_add_course_members`),
+username or e-mail through `lecturer_create_course` / `lecturer_add_course_members`),
 assignment page (roster with status, score, flags, review state), interview
 report (score + rubric, per-question answers with the knowledge evaluation,
 integrity signals with limitations, browser/camera events, transcript, review
 panel → `interview_reviews`). Data layer: `lib/lecturer/*`; all reads run
 under the lecturer's session and the lecturer RLS policies.
+
+### Accounts and sign-in (2026-10-19)
+
+No self sign-up: an admin creates every student and lecturer account with a
+username and a password (`20260519000001_username_accounts.sql`).
+
+- **Username model.** `profiles.username` (unique, `^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`,
+  frozen by `guard_profile_self_update`). Supabase Auth still signs in by
+  e-mail, so each account has the synthetic auth e-mail
+  `<username>@users.podtask.app` (never receives mail). The login screen
+  derives it from the username (`lib/auth/username.ts`, `signInEmailFor`), so
+  there is no lookup endpoint to enumerate. Input with `@` is used as an
+  e-mail, which keeps the older e-mail accounts working. `accountLabel()`
+  shows the username instead of the synthetic e-mail (roster, report, profile).
+- **Login card** (`app/[locale]/login`): tabs at the top, `כניסת סטודנט/ית` /
+  `כניסת מרצה` (`.auth-tabs` / `.auth-tab[aria-selected]`). `?mode=lecturer`,
+  or a `next` path under `/lecturer` (set by the middleware), opens the
+  lecturer tab; after sign-in the user returns to `next` when it is a
+  validated in-app path of the same area. The lecturer tab reads the
+  profile role after sign-in; a non-staff account is signed out (local scope)
+  and told to use the student tab. The guest button stays on the student
+  tab. The magic link was removed (no mailbox behind username accounts, and
+  the auth Site URL still points at localhost).
+- **Creating accounts.** `public.admin_create_account(username, full_name,
+  role, password?, institution_id?, courses[]?, locale?)`, executable by the
+  service role only, inserts a confirmed auth user + identity (bcrypt via
+  pgcrypto, the same shape GoTrue writes), sets the profile (username, name,
+  role, institution; default Demo sandbox) and course memberships (by id or
+  code; lecturers become course lecturers, students are enrolled). A null
+  password makes the database generate one and return it once.
+  `public.admin_set_password(username, password?)` resets a password. Two
+  ways to call them:
+  - `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/create-account.ts
+    --username noa.levi --name "נועה לוי" --role student [--course <id|code>]...
+    [--institution <id>] [--password-prompt]` (and `--reset-password --username <u>`).
+    The script never takes a password as an argument.
+  - Supabase SQL editor (or the Supabase MCP), no key needed:
+    `select public.admin_create_account('dr.cohen', 'ד״ר יעל כהן', 'lecturer', null, null, array['AI101']);`
+    Leave the password null so it is not stored in the editor's query history.
 
 ## 9. Grading engine v2 and the grading queue (2026-10-14)
 

@@ -862,6 +862,7 @@ export type Database = {
           locale: string
           role: Database["public"]["Enums"]["app_role"]
           updated_at: string
+          username: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -873,6 +874,7 @@ export type Database = {
           locale?: string
           role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string
+          username?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -884,6 +886,7 @@ export type Database = {
           locale?: string
           role?: Database["public"]["Enums"]["app_role"]
           updated_at?: string
+          username?: string | null
         }
         Relationships: [
           {
@@ -1122,6 +1125,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_create_account: {
+        Args: {
+          p_courses?: string[]
+          p_full_name: string
+          p_institution_id?: string
+          p_locale?: string
+          p_password?: string
+          p_role?: Database["public"]["Enums"]["app_role"]
+          p_username: string
+        }
+        Returns: Json
+      }
+      admin_set_password: {
+        Args: { p_password?: string; p_username: string }
+        Returns: Json
+      }
       create_personal_assignment: {
         Args: { p_language?: string; p_title: string }
         Returns: string

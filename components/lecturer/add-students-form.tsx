@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/lib/i18n/navigation";
 import { addStudentsByEmail } from "@/lib/lecturer/lecturer-service";
+import { isValidUsername } from "@/lib/auth/username";
 
 export function AddStudentsForm({ courseId }: { courseId: string }) {
   const t = useTranslations();
@@ -17,14 +18,15 @@ export function AddStudentsForm({ courseId }: { courseId: string }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (pending) return;
-    const emails = raw
+    // E-mails or usernames; the RPC matches an entry without "@" by username.
+    const entries = raw
       .split(/[\s,;]+/)
       .map((s) => s.trim())
-      .filter((s) => s.includes("@"));
-    if (emails.length === 0) return;
+      .filter((s) => s.includes("@") || isValidUsername(s));
+    if (entries.length === 0) return;
     setPending(true);
     setError(null);
-    const r = await addStudentsByEmail(courseId, emails);
+    const r = await addStudentsByEmail(courseId, entries);
     setPending(false);
     if (!r.ok) {
       setError(t("lecturer.errorGeneric"));
@@ -53,7 +55,7 @@ export function AddStudentsForm({ courseId }: { courseId: string }) {
         className="input lx-textarea"
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
-        placeholder="student@university.edu"
+        placeholder="noa.levi"
         dir="ltr"
       />
       {result ? (

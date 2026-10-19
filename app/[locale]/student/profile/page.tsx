@@ -4,6 +4,7 @@ import { StudentAppShell } from "@/components/student/student-app-shell";
 import { Eyebrow } from "@/components/podtask/eyebrow";
 import { getStudentProfile } from "@/lib/student/student-service-server";
 import { LogoutButton } from "@/components/student/logout-button";
+import { accountLabel, isUsernameEmail } from "@/lib/auth/username";
 
 interface ProfilePageProps {
   params: Promise<{ locale: string }>;
@@ -20,10 +21,15 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   setRequestLocale(locale);
   const t = await getTranslations();
   const profile = await getStudentProfile();
+  // Username accounts sign in with a synthetic auth e-mail; show the username.
+  const account = accountLabel(profile.email);
 
   const fields = [
     { label: t("profile.fullName"), value: profile.fullName },
-    { label: t("profile.email"), value: profile.email },
+    {
+      label: isUsernameEmail(profile.email) ? t("profile.username") : t("profile.email"),
+      value: account,
+    },
     { label: t("profile.institution"), value: profile.institutionName },
     {
       label: t("profile.language"),
@@ -62,7 +68,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                 {profile.fullName}
               </div>
               <div className="text-muted" style={{ fontSize: 14 }}>
-                <bdi>{profile.email}</bdi>
+                <bdi>{account}</bdi>
               </div>
             </div>
           </div>

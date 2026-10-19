@@ -3425,3 +3425,50 @@
     min-width: 46px;
   }
 }
+
+/* ===== Auth: login tabs (lecturer access) ==================================
+   Student / lecturer switch at the top of the login card
+   (app/[locale]/login/login-client.tsx). Semantic hooks for themes:
+   .auth-tabs (role=tablist), .auth-tab (role=tab) and
+   .auth-tab[aria-selected="true"] for the current entrance.
+   Existing tokens only, no new colors. */
+@layer components {
+  .auth-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgb(var(--line-2));
+    border: 1px solid rgb(var(--line));
+  }
+  .auth-tab {
+    min-height: 44px; /* comfortable touch target */
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: rgb(var(--muted));
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  }
+  .auth-tab:hover {
+    color: rgb(var(--ink));
+  }
+  .auth-tab[aria-selected="true"] {
+    background: rgb(var(--white));
+    color: rgb(var(--ink));
+    box-shadow: var(--shadow-soft);
+  }
+  .auth-tab:focus-visible {
+    outline: 2px solid rgb(var(--cyan));
+    outline-offset: 2px;
+  }
+  .auth-tab:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}

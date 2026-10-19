@@ -10,6 +10,7 @@ import {
   getStudentProfile,
 } from "@/lib/student/student-service-server";
 import { formatTime } from "@/lib/utils";
+import { isUsernameEmail } from "@/lib/auth/username";
 import { ScoreCard } from "./score-card";
 import { PrintButton } from "@/components/student/print-button";
 import { ConfettiBurst } from "@/components/podtask/confetti-burst";
@@ -81,12 +82,15 @@ export default async function CompletePage({ params }: CompletePageProps) {
                     <bdi>{completedAt}</bdi>
                   </dd>
                 </div>
-                <div>
-                  <dt>{t("complete.copyEmailed")}</dt>
-                  <dd>
-                    <bdi>{profile.email}</bdi>
-                  </dd>
-                </div>
+                {/* Username accounts have no mailbox (synthetic auth e-mail). */}
+                {isUsernameEmail(profile.email) ? null : (
+                  <div>
+                    <dt>{t("complete.copyEmailed")}</dt>
+                    <dd>
+                      <bdi>{profile.email}</bdi>
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
           </div>

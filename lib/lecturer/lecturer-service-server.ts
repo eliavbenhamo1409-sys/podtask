@@ -20,6 +20,7 @@ import {
   resolveIntegritySettings,
 } from "@/lib/integrity/settings";
 import { getReportForInterviewSb } from "@/lib/student/student-service-supabase";
+import { accountLabel } from "@/lib/auth/username";
 import type {
   LecturerAssignmentDetail,
   LecturerAssignmentSummary,
@@ -341,7 +342,7 @@ export const getLecturerAssignment = cache(async function getLecturerAssignment(
       return {
         studentId: id,
         fullName: p?.full_name ?? email,
-        email,
+        email: accountLabel(email),
         isGuest: isGuestEmail(email),
         submissionId: sub?.id ?? null,
         submissionStatus: sub?.status ?? null,
@@ -467,7 +468,7 @@ export const getLecturerInterviewReport = cache(async function getLecturerInterv
     student: {
       id: interview.student_id,
       fullName: student?.full_name ?? email,
-      email,
+      email: accountLabel(email),
       isGuest: isGuestEmail(email),
     },
     assignment: {
